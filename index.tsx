@@ -13,6 +13,8 @@ import {
   Tooltip, AreaChart, Area, XAxis, YAxis
 } from 'recharts';
 import { GoogleGenAI } from "@google/genai";
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import AuthScreen from './components/AuthScreen';
 
 // --- 1. CONFIGURAÇÕES E TIPOS (SUPABASE READY) ---
 
@@ -62,28 +64,19 @@ interface Budget {
 
 const COLORS = ['#3B82F6', '#60A5FA', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
-// --- 2. DADOS E USUÁRIO ---
-const CURRENT_USER: AppUser = {
-  id: 'u-1',
-  name: 'Você',
-  email: 'voce@familia.com',
-  avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-  role: 'admin'
-};
-
+// --- 2. DADOS MOCKADOS (TEMPORÁRIOS - serão removidos com Supabase) ---
 const FAMILY_MOCK: FamilyGroup = {
   id: 'fam-999',
   name: 'Residência Silva',
   joinCode: 'SILVA-2025-XP',
   members: [
-    CURRENT_USER,
     { id: 'u-2', name: 'Mariana', email: 'mari@familia.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mari', role: 'member' },
     { id: 'u-3', name: 'Lucas', email: 'lucas@familia.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucas', role: 'member' }
   ]
 };
 
 // --- FUNÇÃO PARA GERAR DADOS MOCK ---
-const generateMockTransactions = (): Transaction[] => {
+const generateMockTransactions = (currentUserId: string): Transaction[] => {
   const now = new Date();
   const getD = (daysAgo: number) => {
     const d = new Date();
@@ -93,13 +86,13 @@ const generateMockTransactions = (): Transaction[] => {
 
   return [
     // Receitas
-    { id: 't1', userId: 'u-1', description: 'Salário Sênior', amount: 12500, date: getD(10), category: 'Salário', type: 'income' },
+    { id: 't1', userId: currentUserId, description: 'Salário Sênior', amount: 12500, date: getD(10), category: 'Salário', type: 'income' },
     { id: 't2', userId: 'u-2', description: 'Vendas Freelance', amount: 3200, date: getD(5), category: 'Vendas', type: 'income' },
     
     // Gastos Essenciais e Investimentos (Admin)
-    { id: 't3', userId: 'u-1', description: 'Aluguel & Condomínio', amount: 3500, date: getD(8), category: 'Moradia', type: 'expense' },
-    { id: 't4', userId: 'u-1', description: 'Aporte ETF IVVB11', amount: 2500, date: getD(4), category: 'Investimentos', type: 'expense' },
-    { id: 't5', userId: 'u-1', description: 'Supermercado Mensal', amount: 1200, date: getD(1), category: 'Mercado', type: 'expense' },
+    { id: 't3', userId: currentUserId, description: 'Aluguel & Condomínio', amount: 3500, date: getD(8), category: 'Moradia', type: 'expense' },
+    { id: 't4', userId: currentUserId, description: 'Aporte ETF IVVB11', amount: 2500, date: getD(4), category: 'Investimentos', type: 'expense' },
+    { id: 't5', userId: currentUserId, description: 'Supermercado Mensal', amount: 1200, date: getD(1), category: 'Mercado', type: 'expense' },
     
     // Gastos Mariana
     { id: 't6', userId: 'u-2', description: 'Curso UX Design', amount: 850, date: getD(6), category: 'Educação', type: 'expense' },
@@ -124,10 +117,10 @@ const STORAGE_KEY = 'financa_family_v3';
 const BUDGET_KEY = 'financa_budgets_v3';
 
 const storageService = {
-  get: (): Transaction[] => {
+  get: (currentUserId: string): Transaction[] => {
     const data = localStorage.getItem(STORAGE_KEY);
     if (!data) {
-      const mocks = generateMockTransactions();
+      const mocks = generateMockTransactions(currentUserId);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(mocks));
       return mocks;
     }
@@ -353,7 +346,7 @@ const BudgetModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (b: 
   );
 };
 
-const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (t: Transaction) => void }> = ({ isOpen, onClose, onSave }) => {
+const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (t: Transaction) => void; currentUserId: string }> = ({ isOpen, onClose, onSave, currentUserId }) => {
   const [desc, setDesc] = useState('');
   const [rawAmount, setRawAmount] = useState('0'); 
   const [type, setType] = useState<'income' | 'expense'>('expense');
@@ -368,7 +361,7 @@ const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave:
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full glass rounded-t-[3rem] p-8 pb-12 animate-slide-up safe-pb max-h-[92vh] flex flex-col">
         <h2 className="text-2xl font-black mb-6 tracking-tighter">Novo Lançamento</h2>
-        <form onSubmit={e => { e.preventDefault(); onSave({ id: crypto.randomUUID(), userId: CURRENT_USER.id, description: desc || 'Sem descrição', amount: parseInt(rawAmount)/100, category: cat, type, date: new Date().toISOString() }); setDesc(''); setRawAmount('0'); onClose(); }} className="space-y-6 overflow-y-auto no-scrollbar">
+        <form onSubmit={e => { e.preventDefault(); onSave({ id: crypto.randomUUID(), userId: currentUserId, description: desc || 'Sem descrição', amount: parseInt(rawAmount)/100, category: cat, type, date: new Date().toISOString() }); setDesc(''); setRawAmount('0'); onClose(); }} className="space-y-6 overflow-y-auto no-scrollbar">
           <div className="flex p-1.5 bg-white/5 rounded-2xl border border-white/5">
             <button type="button" onClick={() => setType('expense')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase ${type === 'expense' ? 'bg-rose-500 text-white' : 'text-zinc-500'}`}>Despesa</button>
             <button type="button" onClick={() => setType('income')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase ${type === 'income' ? 'bg-emerald-500 text-white' : 'text-zinc-500'}`}>Receita</button>
@@ -393,6 +386,7 @@ const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave:
 // --- APP PRINCIPAL ---
 
 const App: React.FC = () => {
+  const { appUser, signOut, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'resumo' | 'histórico' | 'orçamentos' | 'família'>('resumo');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -403,7 +397,12 @@ const App: React.FC = () => {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; });
 
-  useEffect(() => { setTransactions(storageService.get()); setBudgets(storageService.getBudgets()); }, []);
+  useEffect(() => { 
+    if (appUser) {
+      setTransactions(storageService.get(appUser.id)); 
+      setBudgets(storageService.getBudgets()); 
+    }
+  }, [appUser]);
 
   const filteredTransactions = useMemo(() => transactions.filter(t => t.date.startsWith(selectedMonth)), [transactions, selectedMonth]);
 
@@ -438,13 +437,28 @@ const App: React.FC = () => {
   const handleAiAnalysis = async () => {
     setIsAiLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        setAiAnalysis("Configure a API Key do Gemini nas variáveis de ambiente.");
+        setIsAiLoading(false);
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const prompt = `Analise a saúde financeira familiar: Receita R$ ${stats.income}, Despesa R$ ${stats.expense}, Investimentos R$ ${stats.totalInv}. Categorias: ${categoryData.map(c => c.category + ': R$ ' + c.total).join(', ')}. Responda como um CFO familiar em Português do Brasil, curto e motivador.`;
       const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
       setAiAnalysis(response.text || "Análise indisponível.");
     } catch (e) { setAiAnalysis("Erro na análise."); }
     finally { setIsAiLoading(false); }
   };
+
+  const handleLogout = async () => {
+    if (confirm('Deseja sair da sua conta?')) {
+      await signOut();
+    }
+  };
+
+  // Adicionar usuário atual à lista de membros da família
+  const familyMembers = appUser ? [appUser, ...FAMILY_MOCK.members] : FAMILY_MOCK.members;
 
   return (
     <div className="min-h-screen bg-black text-white pb-32 animate-fade-in overflow-x-hidden">
@@ -458,7 +472,14 @@ const App: React.FC = () => {
             {activeTab === 'família' && 'Família'}
           </h1>
         </div>
-        <div className="bg-white/10 p-3 rounded-full border border-white/5"><BrainCircuit size={20} className="text-blue-500" /></div>
+        <div className="flex items-center gap-3">
+          <button onClick={handleLogout} className="bg-white/10 p-3 rounded-full border border-white/5 hover:bg-white/20 transition-colors active:scale-95">
+            <LogOut size={20} className="text-rose-500" />
+          </button>
+          <div className="bg-white/10 p-3 rounded-full border border-white/5">
+            <BrainCircuit size={20} className="text-blue-500" />
+          </div>
+        </div>
       </header>
 
       <main className="px-6 space-y-8">
@@ -520,7 +541,7 @@ const App: React.FC = () => {
             </div>
             <div className="space-y-4">
               {transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase())).map((t, i) => (
-                <TransactionItem key={t.id} transaction={t} index={i} familyMembers={FAMILY_MOCK.members} onDelete={(id) => { storageService.remove(id); setTransactions(storageService.get()); }} />
+                <TransactionItem key={t.id} transaction={t} index={i} familyMembers={familyMembers} onDelete={(id) => { storageService.remove(id); if (appUser) setTransactions(storageService.get(appUser.id)); }} />
               ))}
             </div>
           </div>
@@ -556,14 +577,14 @@ const App: React.FC = () => {
             <section>
               <h3 className="text-xl font-black mb-6 flex items-center gap-2 tracking-tighter"><Users size={22} className="text-blue-500" /> Membros</h3>
               <div className="space-y-4">
-                {FAMILY_MOCK.members.map(member => {
+                {familyMembers.map(member => {
                   const memberSpent = filteredTransactions.filter(t => t.userId === member.id && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
                   return (
                     <div key={member.id} className="glass p-5 rounded-[2rem] flex items-center justify-between bg-white/5">
                       <div className="flex items-center gap-4">
                         <img src={member.avatar} className="w-12 h-12 rounded-2xl border border-white/10" alt="" />
                         <div>
-                          <h4 className="font-bold text-sm">{member.name} {member.id === CURRENT_USER.id ? '(Você)' : ''}</h4>
+                          <h4 className="font-bold text-sm">{member.name} {appUser && member.id === appUser.id ? '(Você)' : ''}</h4>
                           <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{member.email}</p>
                         </div>
                       </div>
@@ -595,11 +616,50 @@ const App: React.FC = () => {
          ))}
       </nav>
 
-      <TransactionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={t => { storageService.save(t); setTransactions(storageService.get()); }} />
-      <BudgetModal isOpen={isBudgetModalOpen} onClose={() => setIsBudgetModalOpen(false)} onSave={b => { storageService.saveBudget(b); setBudgets(storageService.getBudgets()); }} />
+      {appUser && (
+        <>
+          <TransactionModal 
+            isOpen={isModalOpen} 
+            onClose={() => setIsModalOpen(false)} 
+            onSave={t => { storageService.save(t); setTransactions(storageService.get(appUser.id)); }} 
+            currentUserId={appUser.id}
+          />
+          <BudgetModal 
+            isOpen={isBudgetModalOpen} 
+            onClose={() => setIsBudgetModalOpen(false)} 
+            onSave={b => { storageService.saveBudget(b); setBudgets(storageService.getBudgets()); }} 
+          />
+        </>
+      )}
     </div>
   );
 };
 
+// --- ROOT COM AUTENTICAÇÃO ---
+const AppWrapper: React.FC = () => {
+  const { appUser, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={40} className="animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-zinc-500 font-bold text-sm">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!appUser) {
+    return <AuthScreen />;
+  }
+
+  return <App />;
+};
+
 const root = ReactDOM.createRoot(document.getElementById('root')!);
-root.render(<App />);
+root.render(
+  <AuthProvider>
+    <AppWrapper />
+  </AuthProvider>
+);
