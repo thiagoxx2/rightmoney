@@ -15,6 +15,7 @@ import {
 import { GoogleGenAI } from "@google/genai";
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthScreen from './components/AuthScreen';
+import { transactionsService } from './services/transactions';
 
 // --- 1. CONFIGURAÇÕES E TIPOS (SUPABASE READY) ---
 
@@ -49,7 +50,7 @@ interface FamilyGroup {
 
 interface Transaction {
   id: string;
-  userId: string;
+  user_id: string;  // Agora usa snake_case (compatível com Supabase)
   description: string;
   amount: number;
   date: string;
@@ -75,35 +76,9 @@ const FAMILY_MOCK: FamilyGroup = {
   ]
 };
 
-// --- FUNÇÃO PARA GERAR DADOS MOCK ---
-const generateMockTransactions = (currentUserId: string): Transaction[] => {
-  const now = new Date();
-  const getD = (daysAgo: number) => {
-    const d = new Date();
-    d.setDate(now.getDate() - daysAgo);
-    return d.toISOString();
-  };
-
-  return [
-    // Receitas
-    { id: 't1', userId: currentUserId, description: 'Salário Sênior', amount: 12500, date: getD(10), category: 'Salário', type: 'income' },
-    { id: 't2', userId: 'u-2', description: 'Vendas Freelance', amount: 3200, date: getD(5), category: 'Vendas', type: 'income' },
-    
-    // Gastos Essenciais e Investimentos (Admin)
-    { id: 't3', userId: currentUserId, description: 'Aluguel & Condomínio', amount: 3500, date: getD(8), category: 'Moradia', type: 'expense' },
-    { id: 't4', userId: currentUserId, description: 'Aporte ETF IVVB11', amount: 2500, date: getD(4), category: 'Investimentos', type: 'expense' },
-    { id: 't5', userId: currentUserId, description: 'Supermercado Mensal', amount: 1200, date: getD(1), category: 'Mercado', type: 'expense' },
-    
-    // Gastos Mariana
-    { id: 't6', userId: 'u-2', description: 'Curso UX Design', amount: 850, date: getD(6), category: 'Educação', type: 'expense' },
-    { id: 't7', userId: 'u-2', description: 'Farmácia', amount: 120, date: getD(3), category: 'Saúde', type: 'expense' },
-    
-    // Gastos Lucas
-    { id: 't8', userId: 'u-3', description: 'PS Plus & Netflix', amount: 145, date: getD(7), category: 'Assinaturas', type: 'expense' },
-    { id: 't9', userId: 'u-3', description: 'Jantar Japonês', amount: 280, date: getD(2), category: 'Lanche', type: 'expense' },
-    { id: 't10', userId: 'u-3', description: 'Uber Final de Semana', amount: 95, date: getD(0), category: 'Transporte', type: 'expense' },
-  ];
-};
+// --- FUNÇÃO PARA GERAR DADOS MOCK (REMOVIDA - agora usa Supabase) ---
+// Dados mock foram migrados para o Supabase
+// Use o banco de dados para criar transações reais
 
 const INITIAL_BUDGETS: Budget[] = [
   { category: 'Mercado', limit: 2000 },
@@ -113,27 +88,12 @@ const INITIAL_BUDGETS: Budget[] = [
 ];
 
 // --- 3. PERSISTÊNCIA ---
-const STORAGE_KEY = 'financa_family_v3';
+// TRANSAÇÕES: Migrado para Supabase (usa transactionsService)
+// BUDGETS: Ainda usa localStorage (será migrado na próxima fase)
+
 const BUDGET_KEY = 'financa_budgets_v3';
 
-const storageService = {
-  get: (currentUserId: string): Transaction[] => {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) {
-      const mocks = generateMockTransactions(currentUserId);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(mocks));
-      return mocks;
-    }
-    return JSON.parse(data);
-  },
-  save: (t: Transaction) => {
-    const all = storageService.get();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([t, ...all]));
-  },
-  remove: (id: string) => {
-    const filtered = storageService.get().filter(t => t.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-  },
+const budgetStorageService = {
   getBudgets: (): Budget[] => {
     const data = localStorage.getItem(BUDGET_KEY);
     if (!data) {
@@ -143,11 +103,11 @@ const storageService = {
     return JSON.parse(data);
   },
   saveBudget: (b: Budget) => {
-    const all = storageService.getBudgets().filter(x => x.category !== b.category);
+    const all = budgetStorageService.getBudgets().filter(x => x.category !== b.category);
     localStorage.setItem(BUDGET_KEY, JSON.stringify([...all, b]));
   },
   removeBudget: (category: string) => {
-    const filtered = storageService.getBudgets().filter(b => b.category !== category);
+    const filtered = budgetStorageService.getBudgets().filter(b => b.category !== category);
     localStorage.setItem(BUDGET_KEY, JSON.stringify(filtered));
   }
 };
@@ -173,7 +133,7 @@ const TransactionItem: React.FC<{
   index: number;
   familyMembers: AppUser[];
 }> = ({ transaction, onDelete, index, familyMembers }) => {
-  const member = familyMembers.find(m => m.id === transaction.userId);
+  const member = familyMembers.find(m => m.id === transaction.user_id);
 
   return (
     <div className="glass p-5 rounded-[2rem] flex items-center justify-between list-item-enter bg-black/40 border border-white/5 active:scale-[0.98] transition-all" style={{ animationDelay: `${index * 50}ms` }}>
@@ -195,7 +155,7 @@ const TransactionItem: React.FC<{
         <p className={`font-black text-sm ${transaction.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
           {transaction.type === 'income' ? '+' : '-'} {transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
         </p>
-        <button onClick={() => { if(confirm('Remover este lançamento?')) onDelete(transaction.id); }} className="p-2 text-zinc-800 hover:text-rose-500 transition-colors">
+        <button onClick={() => onDelete(transaction.id)} className="p-2 text-zinc-800 hover:text-rose-500 transition-colors">
           <Trash2 size={16} />
         </button>
       </div>
@@ -346,7 +306,7 @@ const BudgetModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (b: 
   );
 };
 
-const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (t: Transaction) => void; currentUserId: string }> = ({ isOpen, onClose, onSave, currentUserId }) => {
+const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (t: {description: string, amount: number, type: 'income' | 'expense', category: string, date: string}) => void; currentUserId: string }> = ({ isOpen, onClose, onSave, currentUserId }) => {
   const [desc, setDesc] = useState('');
   const [rawAmount, setRawAmount] = useState('0'); 
   const [type, setType] = useState<'income' | 'expense'>('expense');
@@ -361,7 +321,7 @@ const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave:
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full glass rounded-t-[3rem] p-8 pb-12 animate-slide-up safe-pb max-h-[92vh] flex flex-col">
         <h2 className="text-2xl font-black mb-6 tracking-tighter">Novo Lançamento</h2>
-        <form onSubmit={e => { e.preventDefault(); onSave({ id: crypto.randomUUID(), userId: currentUserId, description: desc || 'Sem descrição', amount: parseInt(rawAmount)/100, category: cat, type, date: new Date().toISOString() }); setDesc(''); setRawAmount('0'); onClose(); }} className="space-y-6 overflow-y-auto no-scrollbar">
+        <form onSubmit={e => { e.preventDefault(); onSave({ description: desc || 'Sem descrição', amount: parseInt(rawAmount)/100, category: cat, type, date: new Date().toISOString() }); setDesc(''); setRawAmount('0'); onClose(); }} className="space-y-6 overflow-y-auto no-scrollbar">
           <div className="flex p-1.5 bg-white/5 rounded-2xl border border-white/5">
             <button type="button" onClick={() => setType('expense')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase ${type === 'expense' ? 'bg-rose-500 text-white' : 'text-zinc-500'}`}>Despesa</button>
             <button type="button" onClick={() => setType('income')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase ${type === 'income' ? 'bg-emerald-500 text-white' : 'text-zinc-500'}`}>Receita</button>
@@ -395,12 +355,28 @@ const App: React.FC = () => {
   const [search, setSearch] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; });
+
+  // Carregar transações do Supabase
+  const loadTransactions = async () => {
+    if (!appUser) return;
+    
+    setIsLoadingTransactions(true);
+    try {
+      const data = await transactionsService.getAll(appUser.id);
+      setTransactions(data);
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
 
   useEffect(() => { 
     if (appUser) {
-      setTransactions(storageService.get(appUser.id)); 
-      setBudgets(storageService.getBudgets()); 
+      loadTransactions();
+      setBudgets(budgetStorageService.getBudgets()); 
     }
   }, [appUser]);
 
@@ -454,6 +430,44 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     if (confirm('Deseja sair da sua conta?')) {
       await signOut();
+    }
+  };
+
+  // Função para criar transação
+  const handleCreateTransaction = async (transactionData: {description: string, amount: number, type: 'income' | 'expense', category: string, date: string}) => {
+    if (!appUser) return;
+    
+    try {
+      await transactionsService.create(appUser.id, {
+        description: transactionData.description,
+        amount: transactionData.amount,
+        type: transactionData.type,
+        category: transactionData.category,
+        date: transactionData.date
+      });
+      
+      // Recarregar transações
+      await loadTransactions();
+    } catch (error) {
+      console.error('Error creating transaction:', error);
+      alert('Erro ao criar transação. Tente novamente.');
+    }
+  };
+
+  // Função para deletar transação
+  const handleDeleteTransaction = async (transactionId: string) => {
+    if (!appUser) return;
+    
+    if (!confirm('Remover este lançamento?')) return;
+    
+    try {
+      await transactionsService.delete(transactionId, appUser.id);
+      
+      // Recarregar transações
+      await loadTransactions();
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      alert('Erro ao deletar transação. Tente novamente.');
     }
   };
 
@@ -539,11 +553,23 @@ const App: React.FC = () => {
               <Search size={20} className="text-zinc-600" />
               <input type="text" placeholder="Filtrar por membro ou descrição..." value={search} onChange={e => setSearch(e.target.value)} className="bg-transparent border-none outline-none w-full text-white font-bold" />
             </div>
-            <div className="space-y-4">
-              {transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase())).map((t, i) => (
-                <TransactionItem key={t.id} transaction={t} index={i} familyMembers={familyMembers} onDelete={(id) => { storageService.remove(id); if (appUser) setTransactions(storageService.get(appUser.id)); }} />
-              ))}
-            </div>
+            {isLoadingTransactions ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 size={32} className="animate-spin text-blue-500" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase())).map((t, i) => (
+                  <TransactionItem key={t.id} transaction={t} index={i} familyMembers={familyMembers} onDelete={handleDeleteTransaction} />
+                ))}
+                {transactions.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-zinc-500 font-bold">Nenhuma transação ainda.</p>
+                    <p className="text-xs text-zinc-600 mt-2">Clique no botão + para adicionar.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -578,7 +604,7 @@ const App: React.FC = () => {
               <h3 className="text-xl font-black mb-6 flex items-center gap-2 tracking-tighter"><Users size={22} className="text-blue-500" /> Membros</h3>
               <div className="space-y-4">
                 {familyMembers.map(member => {
-                  const memberSpent = filteredTransactions.filter(t => t.userId === member.id && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                  const memberSpent = filteredTransactions.filter(t => t.user_id === member.id && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
                   return (
                     <div key={member.id} className="glass p-5 rounded-[2rem] flex items-center justify-between bg-white/5">
                       <div className="flex items-center gap-4">
@@ -621,13 +647,13 @@ const App: React.FC = () => {
           <TransactionModal 
             isOpen={isModalOpen} 
             onClose={() => setIsModalOpen(false)} 
-            onSave={t => { storageService.save(t); setTransactions(storageService.get(appUser.id)); }} 
+            onSave={(t) => handleCreateTransaction(t)}
             currentUserId={appUser.id}
           />
           <BudgetModal 
             isOpen={isBudgetModalOpen} 
             onClose={() => setIsBudgetModalOpen(false)} 
-            onSave={b => { storageService.saveBudget(b); setBudgets(storageService.getBudgets()); }} 
+            onSave={b => { budgetStorageService.saveBudget(b); setBudgets(budgetStorageService.getBudgets()); }} 
           />
         </>
       )}
