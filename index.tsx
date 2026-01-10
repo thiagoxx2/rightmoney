@@ -16,6 +16,8 @@ import { GoogleGenAI } from "@google/genai";
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import AuthScreen from './components/AuthScreen';
 import { transactionsService } from './services/transactions';
+import { familiesService, FamilyWithMembers } from './services/families';
+import FamilyModal from './components/FamilyModal';
 
 // --- 1. CONFIGURAÇÕES E TIPOS (SUPABASE READY) ---
 
@@ -350,8 +352,10 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'resumo' | 'histórico' | 'orçamentos' | 'família'>('resumo');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [families, setFamilies] = useState<FamilyWithMembers[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [isFamilyModalOpen, setIsFamilyModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -373,9 +377,22 @@ const App: React.FC = () => {
     }
   };
 
+  // Carregar famílias do Supabase
+  const loadFamilies = async () => {
+    if (!appUser) return;
+    
+    try {
+      const data = await familiesService.getMyFamilies(appUser.id);
+      setFamilies(data);
+    } catch (error) {
+      console.error('Error loading families:', error);
+    }
+  };
+
   useEffect(() => { 
     if (appUser) {
       loadTransactions();
+      loadFamilies();
       setBudgets(budgetStorageService.getBudgets()); 
     }
   }, [appUser]);
@@ -471,14 +488,70 @@ const App: React.FC = () => {
     }
   };
 
-  // Adicionar usuário atual à lista de membros da família
-  const familyMembers = appUser ? [appUser, ...FAMILY_MOCK.members] : FAMILY_MOCK.members;
+  // Funções de família
+  const handleCreateFamily = async (name: string) => {
+    if (!appUser) return;
+    
+    try {
+      const family = await familiesService.createFamily(name, appUser.id);
+      if (family) {
+        await loadFamilies();
+        alert(`Família criada! Código: ${family.join_code}`);
+      } else {
+        alert('Erro ao criar família.');
+      }
+    } catch (error) {
+      console.error('Error creating family:', error);
+      alert('Erro ao criar família.');
+    }
+  };
+
+  const handleJoinFamily = async (code: string) => {
+    if (!appUser) return;
+    
+    try {
+      const success = await familiesService.joinFamily(code, appUser.id);
+      if (success) {
+        await loadFamilies();
+        alert('Você entrou na família!');
+      } else {
+        alert('Código inválido ou família não encontrada.');
+      }
+    } catch (error) {
+      console.error('Error joining family:', error);
+      alert('Erro ao entrar na família.');
+    }
+  };
+
+  // Membros: usuário atual + membros de todas as famílias
+  const allFamilyMembers = useMemo(() => {
+    const membersMap = new Map();
+    
+    // Adicionar usuário atual
+    if (appUser) {
+      membersMap.set(appUser.id, appUser);
+    }
+    
+    // Adicionar membros das famílias
+    families.forEach(family => {
+      family.members.forEach(member => {
+        if (!membersMap.has(member.id)) {
+          membersMap.set(member.id, member);
+        }
+      });
+    });
+    
+    return Array.from(membersMap.values());
+  }, [appUser, families]);
+
+  // Família principal (primeira da lista) ou mock
+  const primaryFamily = families[0] || FAMILY_MOCK;
 
   return (
     <div className="min-h-screen bg-black text-white pb-32 animate-fade-in overflow-x-hidden">
       <header className="px-6 safe-pt pt-12 pb-4 flex justify-between items-center">
         <div>
-          <p className="text-zinc-500 font-black text-[10px] uppercase tracking-[0.2em] mb-1">{FAMILY_MOCK.name}</p>
+          <p className="text-zinc-500 font-black text-[10px] uppercase tracking-[0.2em] mb-1">{primaryFamily.name}</p>
           <h1 className="text-4xl font-black tracking-tighter">
             {activeTab === 'resumo' && 'Visão Geral'}
             {activeTab === 'histórico' && 'Histórico'}
@@ -560,7 +633,7 @@ const App: React.FC = () => {
             ) : (
               <div className="space-y-4">
                 {transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase())).map((t, i) => (
-                  <TransactionItem key={t.id} transaction={t} index={i} familyMembers={familyMembers} onDelete={handleDeleteTransaction} />
+                  <TransactionItem key={t.id} transaction={t} index={i} familyMembers={allFamilyMembers} onDelete={handleDeleteTransaction} />
                 ))}
                 {transactions.length === 0 && (
                   <div className="text-center py-12">
@@ -593,36 +666,69 @@ const App: React.FC = () => {
 
         {activeTab === 'família' && (
           <div className="space-y-8 animate-fade-in">
-            <div className="glass rounded-[2.5rem] p-6 border-blue-500/20 bg-blue-600/5">
-              <div className="flex justify-between items-center mb-4"><span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Código da Família</span><Share2 size={16} className="text-blue-500" /></div>
-              <div className="flex items-center justify-between bg-black/40 p-4 rounded-2xl border border-white/5">
-                <code className="text-lg font-black tracking-widest text-blue-400">{FAMILY_MOCK.joinCode}</code>
-                <button className="p-2 bg-blue-600/20 rounded-xl text-blue-400" onClick={() => navigator.clipboard.writeText(FAMILY_MOCK.joinCode)}>Copiar</button>
-              </div>
-            </div>
-            <section>
-              <h3 className="text-xl font-black mb-6 flex items-center gap-2 tracking-tighter"><Users size={22} className="text-blue-500" /> Membros</h3>
-              <div className="space-y-4">
-                {familyMembers.map(member => {
-                  const memberSpent = filteredTransactions.filter(t => t.user_id === member.id && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-                  return (
-                    <div key={member.id} className="glass p-5 rounded-[2rem] flex items-center justify-between bg-white/5">
-                      <div className="flex items-center gap-4">
-                        <img src={member.avatar} className="w-12 h-12 rounded-2xl border border-white/10" alt="" />
-                        <div>
-                          <h4 className="font-bold text-sm">{member.name} {appUser && member.id === appUser.id ? '(Você)' : ''}</h4>
-                          <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{member.email}</p>
-                        </div>
+            {families.length > 0 ? (
+              <>
+                {families.map(family => (
+                  <div key={family.id} className="space-y-6">
+                    <div className="glass rounded-[2.5rem] p-6 border-blue-500/20 bg-blue-600/5">
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">{family.name}</span>
+                        <Share2 size={16} className="text-blue-500" />
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs font-black text-rose-400">R$ {memberSpent.toLocaleString()}</p>
-                        <p className="text-[8px] font-bold text-zinc-500 uppercase">Consumo Mês</p>
+                      <div className="flex items-center justify-between bg-black/40 p-4 rounded-2xl border border-white/5">
+                        <code className="text-lg font-black tracking-widest text-blue-400">{family.join_code}</code>
+                        <button className="p-2 bg-blue-600/20 rounded-xl text-blue-400 text-xs font-bold" onClick={() => navigator.clipboard.writeText(family.join_code)}>
+                          Copiar
+                        </button>
                       </div>
                     </div>
-                  );
-                })}
+                    <section>
+                      <h3 className="text-xl font-black mb-6 flex items-center gap-2 tracking-tighter">
+                        <Users size={22} className="text-blue-500" /> Membros ({family.members.length})
+                      </h3>
+                      <div className="space-y-4">
+                        {family.members.map(member => {
+                          const memberSpent = filteredTransactions.filter(t => t.user_id === member.id && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                          return (
+                            <div key={member.id} className="glass p-5 rounded-[2rem] flex items-center justify-between bg-white/5">
+                              <div className="flex items-center gap-4">
+                                <img src={member.avatar} className="w-12 h-12 rounded-2xl border border-white/10" alt="" />
+                                <div>
+                                  <h4 className="font-bold text-sm flex items-center gap-2">
+                                    {member.name} 
+                                    {appUser && member.id === appUser.id && <span className="text-blue-500">(Você)</span>}
+                                    {member.role === 'admin' && <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-lg font-black">ADMIN</span>}
+                                  </h4>
+                                  <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">{member.email}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs font-black text-rose-400">R$ {memberSpent.toLocaleString()}</p>
+                                <p className="text-[8px] font-bold text-zinc-500 uppercase">Consumo Mês</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className="text-center py-12 space-y-4">
+                <Users size={48} className="mx-auto text-zinc-700" />
+                <div>
+                  <p className="text-zinc-500 font-bold">Nenhuma família ainda</p>
+                  <p className="text-xs text-zinc-600 mt-2">Crie uma nova ou entre com um código</p>
+                </div>
               </div>
-            </section>
+            )}
+            <button 
+              onClick={() => setIsFamilyModalOpen(true)}
+              className="w-full glass rounded-[2rem] p-5 border-blue-500/20 hover:bg-blue-600/10 transition-all active:scale-[0.98] flex items-center justify-center gap-3 font-black text-sm"
+            >
+              <Plus size={20} strokeWidth={3} /> Criar ou Entrar em Família
+            </button>
           </div>
         )}
       </main>
@@ -654,6 +760,12 @@ const App: React.FC = () => {
             isOpen={isBudgetModalOpen} 
             onClose={() => setIsBudgetModalOpen(false)} 
             onSave={b => { budgetStorageService.saveBudget(b); setBudgets(budgetStorageService.getBudgets()); }} 
+          />
+          <FamilyModal
+            isOpen={isFamilyModalOpen}
+            onClose={() => setIsFamilyModalOpen(false)}
+            onCreateFamily={handleCreateFamily}
+            onJoinFamily={handleJoinFamily}
           />
         </>
       )}
