@@ -21,7 +21,7 @@ Este guia explica como configurar a autenticação com Supabase no projeto.
 #### 1.2. Executar o script SQL
 - No dashboard do Supabase, vá em **SQL Editor**
 - Clique em "New Query"
-- Copie todo o conteúdo do arquivo `supabase_setup.sql`
+- Copie todo o conteúdo do arquivo `supabase_schema.sql`
 - Cole no editor e clique em "Run"
 - Isso criará as tabelas necessárias para autenticação
 

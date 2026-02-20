@@ -94,17 +94,17 @@ O app vai abrir automaticamente em: **http://localhost:3000**
 
 ## ✅ Checklist de Teste:
 
-- [ ] `npm run dev` rodou sem erros
-- [ ] Tela de login apareceu
-- [ ] Consegui criar uma conta
-- [ ] Fui redirecionado para o dashboard
-- [ ] Vejo meu nome no cabeçalho
-- [ ] Consigo adicionar uma transação
-- [ ] Transação aparece no histórico
-- [ ] Consigo navegar entre as abas
-- [ ] Consigo fazer logout
-- [ ] Consigo fazer login novamente
-- [ ] **Tudo funcionando!** 🎉
+- [x] `npm run dev` rodou sem erros
+- [x] Tela de login apareceu
+- [x] Consegui criar uma conta
+- [x] Fui redirecionado para o dashboard
+- [x] Vejo meu nome no cabeçalho
+- [x] Consigo adicionar uma transação
+- [x] Transação aparece no histórico
+- [x] Consigo navegar entre as abas
+- [x] Consigo fazer logout
+- [x] Consigo fazer login novamente
+- [x] **Tudo funcionando!** 🎉
 
 ---
 

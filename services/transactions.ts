@@ -99,7 +99,7 @@ export const transactionsService = {
           date: input.date || new Date().toISOString(),
           type: input.type,
           category: input.category,
-          family_id: input.family_id || null,
+          family_id: null, // Sempre null - transações são individuais
         })
         .select()
         .single();
@@ -236,6 +236,31 @@ export const transactionsService = {
       return data || [];
     } catch (error) {
       console.error('Unexpected error in getByType:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Buscar transações de múltiplos usuários (membros da família)
+   */
+  async getByUserIds(userIds: string[]): Promise<Transaction[]> {
+    try {
+      if (userIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .in('user_id', userIds)
+        .order('date', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching transactions by user IDs:', error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Unexpected error in getByUserIds:', error);
       return [];
     }
   },

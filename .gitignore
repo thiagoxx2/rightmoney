@@ -28,3 +28,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Documentação interna (não vai ao repositório)
+AUTH_SUMMARY.md
+CHECKLIST_DEPLOY.md
+COMO_CONFIGURAR_ENV.md
+EXECUTAR_SQL_AGORA.md
+IMPLEMENTACAO_COMPLETA.md
+PROXIMOS_PASSOS.md
+SETUP_AUTH.md
+TESTE_AGORA.md
+ULTIMOS_PASSOS.md

@@ -13,31 +13,31 @@
 ## 📋 Antes do Deploy
 
 ### 1. Configurar Supabase
-- [ ] Criar projeto no Supabase
-- [ ] Executar script `supabase_setup.sql` no SQL Editor
-- [ ] Copiar Project URL
-- [ ] Copiar anon public key
+- [x] Criar projeto no Supabase
+- [x] Executar script `supabase_schema.sql` no SQL Editor
+- [x] Copiar Project URL
+- [x] Copiar anon public key
 
 ### 2. Configurar Variáveis de Ambiente Localmente
-- [ ] Criar arquivo `.env.local` na raiz do projeto
-- [ ] Adicionar `VITE_SUPABASE_URL`
-- [ ] Adicionar `VITE_SUPABASE_ANON_KEY`
+- [x] Criar arquivo `.env.local` na raiz do projeto
+- [x] Adicionar `VITE _SUPABASE_URL`
+- [x] Adicionar `VITE_SUPABASE_ANON_KEY`
 - [ ] Adicionar `VITE_GEMINI_API_KEY` (opcional, para IA)
-- [ ] Testar localmente com `npm run dev`
+- [x] Testar localmente com `npm run dev`
 
 ### 3. Preparar para Deploy
-- [ ] Testar build: `npm run build`
-- [ ] Verificar se pasta `dist` foi criada
-- [ ] Confirmar que não há erros no build
+- [x] Testar build: `npm run build`
+- [x] Verificar se pasta `dist` foi criada
+- [x] Confirmar que não há erros no build
 
 ## 🌐 Deploy no Netlify
 
 ### Opção A: Deploy via Git (Recomendado)
 
 1. **Preparar Repositório**
-   - [ ] Criar repositório no GitHub/GitLab
-   - [ ] Fazer commit de todos os arquivos
-   - [ ] Push para o repositório
+   - [x] Criar repositório no GitHub/GitLab
+   - [x] Fazer commit de todos os arquivos
+   - [x] Push para o repositório
 
 2. **Conectar ao Netlify**
    - [ ] Acessar [netlify.com](https://netlify.com)

@@ -308,7 +308,12 @@ const BudgetModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (b: 
   );
 };
 
-const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (t: {description: string, amount: number, type: 'income' | 'expense', category: string, date: string}) => void; currentUserId: string }> = ({ isOpen, onClose, onSave, currentUserId }) => {
+const TransactionModal: React.FC<{ 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onSave: (t: {description: string, amount: number, type: 'income' | 'expense', category: string, date: string}) => void; 
+  currentUserId: string;
+}> = ({ isOpen, onClose, onSave, currentUserId }) => {
   const [desc, setDesc] = useState('');
   const [rawAmount, setRawAmount] = useState('0'); 
   const [type, setType] = useState<'income' | 'expense'>('expense');
@@ -323,7 +328,19 @@ const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave:
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full glass rounded-t-[3rem] p-8 pb-12 animate-slide-up safe-pb max-h-[92vh] flex flex-col">
         <h2 className="text-2xl font-black mb-6 tracking-tighter">Novo Lançamento</h2>
-        <form onSubmit={e => { e.preventDefault(); onSave({ description: desc || 'Sem descrição', amount: parseInt(rawAmount)/100, category: cat, type, date: new Date().toISOString() }); setDesc(''); setRawAmount('0'); onClose(); }} className="space-y-6 overflow-y-auto no-scrollbar">
+        <form onSubmit={e => { 
+          e.preventDefault(); 
+          onSave({ 
+            description: desc || 'Sem descrição', 
+            amount: parseInt(rawAmount)/100, 
+            category: cat, 
+            type, 
+            date: new Date().toISOString()
+          }); 
+          setDesc(''); 
+          setRawAmount('0'); 
+          onClose(); 
+        }} className="space-y-6 overflow-y-auto no-scrollbar">
           <div className="flex p-1.5 bg-white/5 rounded-2xl border border-white/5">
             <button type="button" onClick={() => setType('expense')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase ${type === 'expense' ? 'bg-rose-500 text-white' : 'text-zinc-500'}`}>Despesa</button>
             <button type="button" onClick={() => setType('income')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase ${type === 'income' ? 'bg-emerald-500 text-white' : 'text-zinc-500'}`}>Receita</button>
@@ -362,13 +379,21 @@ const App: React.FC = () => {
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; });
 
-  // Carregar transações do Supabase
+  // Carregar transações do usuário + todos os membros das famílias
   const loadTransactions = async () => {
     if (!appUser) return;
     
     setIsLoadingTransactions(true);
     try {
-      const data = await transactionsService.getAll(appUser.id);
+      // Coletar IDs de todos os membros das famílias + usuário atual
+      const allMemberIds = new Set<string>([appUser.id]);
+      families.forEach(family => {
+        family.members.forEach(member => {
+          allMemberIds.add(member.id);
+        });
+      });
+
+      const data = await transactionsService.getByUserIds(Array.from(allMemberIds));
       setTransactions(data);
     } catch (error) {
       console.error('Error loading transactions:', error);
@@ -391,11 +416,17 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     if (appUser) {
-      loadTransactions();
       loadFamilies();
       setBudgets(budgetStorageService.getBudgets()); 
     }
   }, [appUser]);
+
+  // Recarregar transações quando famílias mudarem
+  useEffect(() => {
+    if (appUser && families.length >= 0) {
+      loadTransactions();
+    }
+  }, [appUser, families]);
 
   const filteredTransactions = useMemo(() => transactions.filter(t => t.date.startsWith(selectedMonth)), [transactions, selectedMonth]);
 
@@ -688,7 +719,20 @@ const App: React.FC = () => {
                       </h3>
                       <div className="space-y-4">
                         {family.members.map(member => {
-                          const memberSpent = filteredTransactions.filter(t => t.user_id === member.id && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                          // Calcular consumo do mês: filtrar transações do membro no mês selecionado
+                          // filteredTransactions já está filtrado por mês, só precisamos filtrar por membro e tipo
+                          const memberTransactions = filteredTransactions.filter(t => t.user_id === member.id && t.type === 'expense');
+                          const memberSpent = memberTransactions.reduce((sum, t) => {
+                            // Converter amount para number (pode vir como string do Supabase)
+                            const amount = typeof t.amount === 'string' ? parseFloat(t.amount) : t.amount;
+                            return sum + (amount || 0);
+                          }, 0);
+                          
+                          // Debug (remover depois)
+                          if (memberSpent > 0 || memberTransactions.length > 0) {
+                            console.log(`💰 ${member.name}: ${memberTransactions.length} transações, Total: R$ ${memberSpent.toFixed(2)}`);
+                          }
+                          
                           return (
                             <div key={member.id} className="glass p-5 rounded-[2rem] flex items-center justify-between bg-white/5">
                               <div className="flex items-center gap-4">
@@ -703,7 +747,9 @@ const App: React.FC = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="text-xs font-black text-rose-400">R$ {memberSpent.toLocaleString()}</p>
+                                <p className="text-xs font-black text-rose-400">
+                                  R$ {memberSpent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
                                 <p className="text-[8px] font-bold text-zinc-500 uppercase">Consumo Mês</p>
                               </div>
                             </div>

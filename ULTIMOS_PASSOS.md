@@ -19,7 +19,7 @@
 1. Acesse o dashboard do Supabase: https://supabase.com/dashboard/project/ecremokycjxbtbmjwsdc
 2. No menu lateral, clique em **SQL Editor** 📝
 3. Clique em **New Query**
-4. Abra o arquivo `supabase_setup.sql` deste projeto
+4. Abra o arquivo `supabase_schema.sql` deste projeto
 5. Copie **TODO** o conteúdo do arquivo
 6. Cole no SQL Editor
 7. Clique em **Run** (botão ▶️ verde)
@@ -118,7 +118,7 @@ cat .env.local
 ```
 
 ### Erro: "relation public.profiles does not exist"
-- Você precisa executar o script `supabase_setup.sql` no SQL Editor do Supabase
+- Você precisa executar o script `supabase_schema.sql` no SQL Editor do Supabase
 - Vá em: https://supabase.com/dashboard/project/ecremokycjxbtbmjwsdc/sql
 
 ### Erro: "Invalid API key"

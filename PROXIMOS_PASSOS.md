@@ -55,7 +55,7 @@ VITE_GEMINI_API_KEY=AIzaSyB1234567890abcdefghijklmnop
 
 1. No dashboard do Supabase, vá em **SQL Editor** (no menu lateral)
 2. Clique em **New Query**
-3. Abra o arquivo `supabase_setup.sql` deste projeto
+3. Abra o arquivo `supabase_schema.sql` deste projeto
 4. Copie TODO o conteúdo
 5. Cole no SQL Editor
 6. Clique em **Run** (▶️)
@@ -79,7 +79,7 @@ Acesse http://localhost:3000 e tente:
 ```
 /finança-ios-pwa/
 ├── .env.local          ← Arquivo criado, precisa da ANON KEY
-├── supabase_setup.sql  ← Copie e execute no Supabase
+├── supabase_schema.sql  ← Copie e execute no Supabase
 └── [outros arquivos]
 ```
 
@@ -96,7 +96,7 @@ Acesse http://localhost:3000 e tente:
 - Verifique se não há espaços extras
 
 ### Erro ao criar conta: "relation public.profiles does not exist"
-- Execute o script `supabase_setup.sql` no SQL Editor do Supabase
+- Execute o script `supabase_schema.sql` no SQL Editor do Supabase
 
 ---
 
@@ -105,7 +105,7 @@ Acesse http://localhost:3000 e tente:
 - [ ] Acessei o Supabase Dashboard
 - [ ] Copiei a ANON KEY (anon public)
 - [ ] Colei no arquivo `.env.local`
-- [ ] Executei o script `supabase_setup.sql` no SQL Editor
+- [ ] Executei o script `supabase_schema.sql` no SQL Editor
 - [ ] Rodei `npm run dev`
 - [ ] Testei criar uma conta
 - [ ] Testei fazer login

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Users, Share2, X, Loader2 } from 'lucide-react';
 
-interface FamilyModalProps {
+export interface FamilyModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreateFamily: (name: string) => Promise<void>;

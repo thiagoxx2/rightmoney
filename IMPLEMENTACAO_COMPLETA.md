@@ -37,7 +37,7 @@
 ✨ contexts/AuthContext.tsx          - Gerenciamento de autenticação
 ✨ components/AuthScreen.tsx         - Tela de Login/Registro
 ✨ .env.example                      - Template de variáveis
-✨ supabase_setup.sql                - Script SQL para banco
+✨ supabase_schema.sql                - Script SQL para banco
 ✨ SETUP_AUTH.md                     - Guia de configuração
 ✨ AUTH_SUMMARY.md                   - Resumo técnico
 ✨ CHECKLIST_DEPLOY.md               - Checklist de deploy
@@ -167,7 +167,7 @@
 
 ### 1. Configurar Supabase (5 min)
 - [ ] Criar projeto no supabase.com
-- [ ] Executar `supabase_setup.sql` no SQL Editor
+- [ ] Executar `supabase_schema.sql` no SQL Editor
 - [ ] Copiar URL e anon key
 
 ### 2. Testar Localmente (2 min)
@@ -192,7 +192,7 @@
 | `CHECKLIST_DEPLOY.md` | Checklist detalhado para deploy |
 | `IMPLEMENTACAO_COMPLETA.md` | Este arquivo (visão geral) |
 | `.env.example` | Template de variáveis de ambiente |
-| `supabase_setup.sql` | Script SQL para criar tabelas |
+| `supabase_schema.sql` | Script SQL para criar tabelas |
 
 ## 🎯 Resultados
 

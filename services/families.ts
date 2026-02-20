@@ -150,31 +150,71 @@ export const familiesService = {
   // Buscar membros de uma família
   async getFamilyMembers(familyId: string): Promise<FamilyWithMembers['members']> {
     try {
-      const { data, error } = await supabase
+      console.log('🔍 Buscando membros da família:', familyId);
+      
+      // 1. Buscar membros da família
+      const { data: members, error: membersError } = await supabase
         .from('family_members')
-        .select(`
-          role,
-          user_id,
-          profiles (
-            id,
-            name,
-            email,
-            avatar
-          )
-        `)
+        .select('user_id, role')
         .eq('family_id', familyId);
 
-      if (error || !data) return [];
+      if (membersError) {
+        console.error('❌ Erro ao buscar membros:', membersError);
+        return [];
+      }
 
-      return data.map((m: any) => ({
-        id: m.profiles.id,
-        name: m.profiles.name,
-        email: m.profiles.email,
-        avatar: m.profiles.avatar,
-        role: m.role
-      }));
+      if (!members || members.length === 0) {
+        console.log('⚠️ Nenhum membro encontrado para família:', familyId);
+        return [];
+      }
+
+      console.log('✅ Membros encontrados:', members.length, members);
+
+      // 2. Buscar perfis de todos os membros
+      const userIds = members.map(m => m.user_id);
+      console.log('🔍 Buscando perfis para usuários:', userIds);
+      
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, name, email, avatar_url')
+        .in('id', userIds);
+
+      if (profilesError) {
+        console.error('❌ Erro ao buscar perfis:', profilesError);
+        return [];
+      }
+
+      if (!profiles || profiles.length === 0) {
+        console.warn('⚠️ Nenhum perfil encontrado para os membros');
+        return [];
+      }
+
+      console.log('✅ Perfis encontrados:', profiles.length, profiles);
+
+      // 3. Combinar dados: membro + perfil
+      const membersMap = new Map(profiles.map(p => [p.id, p]));
+      
+      const result = members
+        .map(member => {
+          const profile = membersMap.get(member.user_id);
+          if (!profile) {
+            console.warn(`⚠️ Perfil não encontrado para user_id: ${member.user_id}`);
+            return null;
+          }
+          return {
+            id: profile.id,
+            name: profile.name || 'Sem nome',
+            email: profile.email || '',
+            avatar: profile.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.id}`,
+            role: member.role
+          };
+        })
+        .filter((m): m is NonNullable<typeof m> => m !== null);
+
+      console.log('✅ Membros finais retornados:', result.length, result);
+      return result;
     } catch (error) {
-      console.error('Error getting family members:', error);
+      console.error('❌ Erro ao buscar membros da família:', error);
       return [];
     }
   },

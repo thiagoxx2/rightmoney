@@ -10,7 +10,7 @@
 #### Configuração
 - ✅ `services/supabase.ts` - Cliente Supabase configurado
 - ✅ `.env.example` - Template de variáveis de ambiente
-- ✅ `supabase_setup.sql` - Script SQL para criar tabelas
+- ✅ `supabase_schema.sql` - Script SQL para criar tabelas
 
 #### Autenticação
 - ✅ `contexts/AuthContext.tsx` - Context API para gerenciar autenticação
@@ -75,7 +75,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGci...
 ```
 
 2. **Executar script SQL no Supabase:**
-- Copie o conteúdo de `supabase_setup.sql`
+- Copie o conteúdo de `supabase_schema.sql`
 - Execute no SQL Editor do Supabase
 
 3. **Rodar o projeto:**

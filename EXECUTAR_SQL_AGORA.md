@@ -42,7 +42,7 @@ Clique em **"New Query"**
 
 ### 3. Cole o conteúdo do arquivo
 
-Abra o arquivo: `create_remaining_tables.sql`
+Abra o arquivo: `supabase_schema.sql`
 
 Copie **TODO** o conteúdo e cole no SQL Editor
 
@@ -167,7 +167,7 @@ CREATE TRIGGER create_family_on_profile_creation
 As tabelas já foram criadas. Tudo OK!
 
 ### Erro: "function handle_updated_at does not exist"
-Execute o script original `supabase_setup.sql` primeiro (cria essa função).
+Execute o script `supabase_schema.sql` completo (contém todas as funções).
 
 ### Erro: "permission denied"
 Verifique se está usando a conta correta do Supabase.
@@ -192,7 +192,7 @@ Este SQL é 100% compatível com o código atual:
 
 1. ✅ **Executar este SQL**
 2. ✅ **Verificar tabelas criadas**
-3. ⏳ **Migrar dados do localStorage para Supabase**
+3. ✅ **Migrar dados do localStorage para Supabase** *(ignorado — sem dados locais relevantes)*
 4. ⏳ **Implementar sistema de famílias**
 5. ⏳ **Remover dados mock**
 
@@ -200,4 +200,4 @@ Este SQL é 100% compatível com o código atual:
 
 **🚀 Execute o SQL agora e me avise se funcionou!**
 
-Arquivo: `create_remaining_tables.sql`
+Arquivo: `supabase_schema.sql`

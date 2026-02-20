@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   root: '.', // Define a raiz do projeto explicitamente
-  base: './', // Garante caminhos relativos no build para compatibilidade total
+  base: '/', // Caminhos absolutos necessários para SPA redirect funcionar na Netlify
   build: {
     outDir: 'dist',
     emptyOutDir: true, // Limpa a pasta dist antes de cada build
