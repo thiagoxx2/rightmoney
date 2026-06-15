@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { 
   Plus, Wallet, ArrowUpRight, ArrowDownLeft, Activity, 
-  TrendingUp, History, Trash2, Search, Check, AlertCircle, Sparkles,
+  TrendingUp, History, Trash2, Search, Check, AlertCircle, Sparkles, Pencil,
   Target, BarChart3, PieChart as PieIcon, Calendar, BrainCircuit,
   Loader2, ChevronRight, MessageSquare, LayoutGrid, Gauge, Users,
   User as UserIcon, Share2, ShieldCheck, LogOut, TrendingDown
@@ -14,26 +14,33 @@ import {
 } from 'recharts';
 import { GoogleGenAI } from "@google/genai";
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { PeriodProvider, usePeriod } from './contexts/PeriodContext';
 import AuthScreen from './components/AuthScreen';
-import { transactionsService } from './services/transactions';
+import MonthSelector from './components/MonthSelector';
+import { transactionsService, type Transaction } from './services/transactions';
 import { familiesService, FamilyWithMembers } from './services/families';
 import FamilyModal from './components/FamilyModal';
+import {
+  buildGeminiPrompt,
+  computeCategoryTotals,
+  computeCumulativeBalance,
+  computeDailyExpenses,
+  computeMonthlySummary,
+  parseAmount,
+  toFinancialDate,
+} from './utils/financial';
+import type { CumulativeBalance } from './types/financial';
+import { financialDateToIsoNoon } from './utils/period';
+import type { CategoryTotal, DailyExpense } from './types/financial';
+import {
+  EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
+  type Category,
+  type ExpenseCategory,
+  type IncomeCategory,
+} from './constants/categories';
 
 // --- 1. CONFIGURAÇÕES E TIPOS (SUPABASE READY) ---
-
-const INCOME_CATEGORIES = [
-  'Salário', 'Pro-labore', 'Dividendos', 'Investimentos', 'Empresa', 'Vendas', 'Outros'
-] as const;
-
-const EXPENSE_CATEGORIES = [
-  'Mercado', 'Lanche', 'Lazer', 'Transporte', 'Saúde', 'Educação', 
-  'E-commerce', 'Compras Físicas', 'Investimentos', 'Empresa', 
-  'Moradia', 'Assinaturas', 'Pet', 'Bem-estar', 'Outros'
-] as const;
-
-type IncomeCategory = typeof INCOME_CATEGORIES[number];
-type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
-type Category = IncomeCategory | ExpenseCategory;
 
 interface AppUser {
   id: string;
@@ -48,16 +55,6 @@ interface FamilyGroup {
   name: string;
   joinCode: string;
   members: AppUser[];
-}
-
-interface Transaction {
-  id: string;
-  user_id: string;  // Agora usa snake_case (compatível com Supabase)
-  description: string;
-  amount: number;
-  date: string;
-  category: Category;
-  type: 'income' | 'expense';
 }
 
 interface Budget {
@@ -132,10 +129,13 @@ const MetricCard: React.FC<{ title: string, value: string, subValue: string, ico
 const TransactionItem: React.FC<{ 
   transaction: Transaction; 
   onDelete: (id: string) => void;
+  onEdit: (transaction: Transaction) => void;
+  currentUserId?: string;
   index: number;
   familyMembers: AppUser[];
-}> = ({ transaction, onDelete, index, familyMembers }) => {
+}> = ({ transaction, onDelete, onEdit, currentUserId, index, familyMembers }) => {
   const member = familyMembers.find(m => m.id === transaction.user_id);
+  const canModify = currentUserId === transaction.user_id;
 
   return (
     <div className="glass p-5 rounded-[2rem] flex items-center justify-between list-item-enter bg-black/40 border border-white/5 active:scale-[0.98] transition-all" style={{ animationDelay: `${index * 50}ms` }}>
@@ -155,11 +155,18 @@ const TransactionItem: React.FC<{
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <p className={`font-black text-sm ${transaction.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
-          {transaction.type === 'income' ? '+' : '-'} {transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          {transaction.type === 'income' ? '+' : '-'} {parseAmount(transaction.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
         </p>
-        <button onClick={() => onDelete(transaction.id)} className="p-2 text-zinc-800 hover:text-rose-500 transition-colors">
-          <Trash2 size={16} />
-        </button>
+        {canModify && (
+          <>
+            <button onClick={() => onEdit(transaction)} className="p-2 text-zinc-800 hover:text-blue-400 transition-colors" aria-label="Editar lançamento">
+              <Pencil size={16} />
+            </button>
+            <button onClick={() => onDelete(transaction.id)} className="p-2 text-zinc-800 hover:text-rose-500 transition-colors" aria-label="Excluir lançamento">
+              <Trash2 size={16} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -201,7 +208,7 @@ const BudgetProgressCard: React.FC<{ budget: Budget; spent: number; onDelete: (c
 
 // --- GRÁFICOS ---
 
-const TrendChart: React.FC<{ data: any[] }> = ({ data }) => (
+const TrendChart: React.FC<{ data: DailyExpense[] }> = ({ data }) => (
   <div className="h-56 w-full">
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -238,7 +245,7 @@ const TrendChart: React.FC<{ data: any[] }> = ({ data }) => (
   </div>
 );
 
-const DonutChart: React.FC<{ data: any[] }> = ({ data }) => {
+const DonutChart: React.FC<{ data: CategoryTotal[] }> = ({ data }) => {
   const totalSpending = useMemo(() => data.reduce((acc, curr) => acc + curr.total, 0), [data]);
 
   return (
@@ -308,37 +315,94 @@ const BudgetModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (b: 
   );
 };
 
+type TransactionFormData = {
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  category: string;
+  date: string;
+};
+
+const getCategoryOptions = (
+  type: 'income' | 'expense',
+  currentCategory?: string,
+): string[] => {
+  const base = type === 'income' ? [...INCOME_CATEGORIES] : [...EXPENSE_CATEGORIES];
+  if (currentCategory && !base.some((c) => c === currentCategory)) {
+    return [currentCategory, ...base];
+  }
+  return base;
+};
+
 const TransactionModal: React.FC<{ 
   isOpen: boolean; 
   onClose: () => void; 
-  onSave: (t: {description: string, amount: number, type: 'income' | 'expense', category: string, date: string}) => void; 
-  currentUserId: string;
-}> = ({ isOpen, onClose, onSave, currentUserId }) => {
+  onSave: (t: TransactionFormData) => void;
+  transaction?: Transaction | null;
+}> = ({ isOpen, onClose, onSave, transaction }) => {
+  const isEditing = !!transaction;
   const [desc, setDesc] = useState('');
   const [rawAmount, setRawAmount] = useState('0'); 
   const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [cat, setCat] = useState<Category>(EXPENSE_CATEGORIES[0]);
+  const [cat, setCat] = useState<string>(EXPENSE_CATEGORIES[0]);
+  const [financialDate, setFinancialDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const formattedValue = useMemo(() => (parseInt(rawAmount) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), [rawAmount]);
+  const categoryOptions = useMemo(
+    () => getCategoryOptions(type, cat),
+    [type, cat],
+  );
 
-  useEffect(() => { setCat(type === 'income' ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0]); }, [type]);
+  useEffect(() => {
+    if (!isOpen) return;
+    if (transaction) {
+      setDesc(transaction.description);
+      setRawAmount(String(Math.round(parseAmount(transaction.amount) * 100)));
+      setType(transaction.type);
+      setCat(transaction.category);
+      setFinancialDate(toFinancialDate(transaction.date));
+      return;
+    }
+    const now = new Date();
+    setDesc('');
+    setRawAmount('0');
+    setType('expense');
+    setCat(EXPENSE_CATEGORIES[0]);
+    setFinancialDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+  }, [isOpen, transaction]);
+
+  useEffect(() => {
+    const options = getCategoryOptions(type, cat);
+    if (!options.includes(cat)) {
+      setCat(options[0]);
+    }
+  }, [type, cat]);
+
   if (!isOpen) return null;
+
+  const todayStr = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  })();
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full glass rounded-t-[3rem] p-8 pb-12 animate-slide-up safe-pb max-h-[92vh] flex flex-col">
-        <h2 className="text-2xl font-black mb-6 tracking-tighter">Novo Lançamento</h2>
+        <h2 className="text-2xl font-black mb-6 tracking-tighter">
+          {isEditing ? 'Editar Lançamento' : 'Novo Lançamento'}
+        </h2>
         <form onSubmit={e => { 
           e.preventDefault(); 
           onSave({ 
             description: desc || 'Sem descrição', 
-            amount: parseInt(rawAmount)/100, 
+            amount: parseInt(rawAmount) / 100, 
             category: cat, 
             type, 
-            date: new Date().toISOString()
+            date: financialDateToIsoNoon(financialDate),
           }); 
-          setDesc(''); 
-          setRawAmount('0'); 
           onClose(); 
         }} className="space-y-6 overflow-y-auto no-scrollbar">
           <div className="flex p-1.5 bg-white/5 rounded-2xl border border-white/5">
@@ -350,12 +414,25 @@ const TransactionModal: React.FC<{
             <input type="tel" value={formattedValue} onChange={e => setRawAmount(e.target.value.replace(/\D/g, '') || '0')} className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-white text-4xl font-black text-center outline-none" required />
             <span className="absolute top-2 left-1/2 -translate-x-1/2 text-[9px] font-black text-zinc-500 uppercase">Valor</span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {(type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(c => (
+          <div>
+            <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-2 block">Data do lançamento</label>
+            <input
+              type="date"
+              value={financialDate}
+              max={todayStr}
+              onChange={e => setFinancialDate(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white font-bold outline-none focus:border-blue-500"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto no-scrollbar">
+            {categoryOptions.map(c => (
               <button key={c} type="button" onClick={() => setCat(c)} className={`py-3 px-1 rounded-xl text-[9px] font-black uppercase border transition-all truncate ${cat === c ? 'bg-white/20 border-white/30 text-white' : 'border-white/5 text-zinc-600'}`}>{c}</button>
             ))}
           </div>
-          <button type="submit" className={`w-full py-5 rounded-[2rem] font-black text-lg flex items-center justify-center gap-2 ${type === 'income' ? 'bg-emerald-600' : 'bg-blue-600'}`}>Confirmar {type === 'income' ? 'Receita' : 'Gasto'}</button>
+          <button type="submit" className={`w-full py-5 rounded-[2rem] font-black text-lg flex items-center justify-center gap-2 ${type === 'income' ? 'bg-emerald-600' : 'bg-blue-600'}`}>
+            {isEditing ? 'Salvar Alterações' : `Confirmar ${type === 'income' ? 'Receita' : 'Gasto'}`}
+          </button>
         </form>
       </div>
     </div>
@@ -365,40 +442,77 @@ const TransactionModal: React.FC<{
 // --- APP PRINCIPAL ---
 
 const App: React.FC = () => {
-  const { appUser, signOut, loading: authLoading } = useAuth();
+  const { appUser, signOut } = useAuth();
+  const {
+    selectedPeriod,
+    dateRange,
+    periodLabel,
+    isCurrentMonth,
+  } = usePeriod();
   const [activeTab, setActiveTab] = useState<'resumo' | 'histórico' | 'orçamentos' | 'família'>('resumo');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [families, setFamilies] = useState<FamilyWithMembers[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isFamilyModalOpen, setIsFamilyModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; });
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<CumulativeBalance | null>(null);
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
-  // Carregar transações do usuário + todos os membros das famílias
+  const primaryFamilyId = families[0]?.id ?? null;
+
+  const familyMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (appUser) ids.add(appUser.id);
+    families.forEach(family => {
+      family.members.forEach(member => ids.add(member.id));
+    });
+    return Array.from(ids);
+  }, [appUser, families]);
+
   const loadTransactions = async () => {
     if (!appUser) return;
-    
-    setIsLoadingTransactions(true);
-    try {
-      // Coletar IDs de todos os membros das famílias + usuário atual
-      const allMemberIds = new Set<string>([appUser.id]);
-      families.forEach(family => {
-        family.members.forEach(member => {
-          allMemberIds.add(member.id);
-        });
-      });
 
-      const data = await transactionsService.getByUserIds(Array.from(allMemberIds));
+    setIsLoadingTransactions(true);
+    setTransactionsError(null);
+    try {
+      const data = await transactionsService.getByUserIdsInPeriod({
+        userIds: familyMemberIds,
+        range: dateRange,
+        familyId: primaryFamilyId,
+      });
       setTransactions(data);
     } catch (error) {
       console.error('Error loading transactions:', error);
+      setTransactionsError('Não foi possível carregar as transações deste período.');
+      setTransactions([]);
     } finally {
       setIsLoadingTransactions(false);
+    }
+  };
+
+  const loadWalletBalance = async () => {
+    if (!appUser || familyMemberIds.length === 0) return;
+
+    setIsLoadingWallet(true);
+    setWalletError(null);
+    try {
+      const allTransactions = await transactionsService.getByUserIds(familyMemberIds);
+      setWalletBalance(computeCumulativeBalance(allTransactions));
+    } catch (error) {
+      console.error('Error loading wallet balance:', error);
+      setWalletError('Não foi possível calcular o saldo em carteira.');
+      setWalletBalance(null);
+    } finally {
+      setIsLoadingWallet(false);
     }
   };
 
@@ -421,58 +535,65 @@ const App: React.FC = () => {
     }
   }, [appUser]);
 
-  // Recarregar transações quando famílias mudarem
   useEffect(() => {
-    if (appUser && families.length >= 0) {
+    if (appUser) {
       loadTransactions();
     }
-  }, [appUser, families]);
+  }, [appUser, families, dateRange, familyMemberIds, primaryFamilyId]);
 
-  const filteredTransactions = useMemo(() => transactions.filter(t => t.date.startsWith(selectedMonth)), [transactions, selectedMonth]);
+  useEffect(() => {
+    if (appUser) {
+      loadWalletBalance();
+    }
+  }, [appUser, familyMemberIds]);
 
-  const stats = useMemo(() => {
-    const s = filteredTransactions.reduce((acc, t) => {
-      if (t.type === 'income') acc.income += t.amount;
-      else acc.expense += t.amount;
-      return acc;
-    }, { income: 0, expense: 0 });
-    const totalInv = filteredTransactions.filter(t => t.category === 'Investimentos').reduce((acc, t) => acc + t.amount, 0);
-    return { ...s, balance: s.income - s.expense, usageRate: s.income > 0 ? (s.expense / s.income) * 100 : 0, totalInv, savingsRate: s.income > 0 ? (totalInv / s.income) * 100 : 0 };
-  }, [filteredTransactions]);
+  useEffect(() => {
+    setAiAnalysis(null);
+    setAiError(null);
+  }, [selectedPeriod]);
 
-  const categoryData = useMemo(() => {
-    const map = new Map<Category, number>();
-    filteredTransactions.filter(t => t.type === 'expense').forEach(t => map.set(t.category, (map.get(t.category) || 0) + t.amount));
-    return Array.from(map.entries()).map(([category, total]) => ({ category, total }));
-  }, [filteredTransactions]);
+  const periodTransactions = transactions;
 
-  const trendData = useMemo(() => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    return Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date(year, month - 1, now().getDate() - i);
-      const dStr = d.toISOString().split('T')[0];
-      const amount = filteredTransactions.filter(t => t.date.startsWith(dStr) && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-      return { day: dStr, amount };
-    }).reverse();
-  }, [filteredTransactions, selectedMonth]);
+  const stats = useMemo(
+    () => computeMonthlySummary(periodTransactions),
+    [periodTransactions],
+  );
 
-  function now() { return new Date(); }
+  const categoryData = useMemo(
+    () => computeCategoryTotals(periodTransactions, 'expense'),
+    [periodTransactions],
+  );
+
+  const trendData = useMemo(
+    () => computeDailyExpenses(periodTransactions, selectedPeriod),
+    [periodTransactions, selectedPeriod],
+  );
 
   const handleAiAnalysis = async () => {
     setIsAiLoading(true);
+    setAiError(null);
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) {
-        setAiAnalysis("Configure a API Key do Gemini nas variáveis de ambiente.");
+        setAiError('Configure a API Key do Gemini nas variáveis de ambiente.');
         setIsAiLoading(false);
         return;
       }
       const ai = new GoogleGenAI({ apiKey });
-      const prompt = `Analise a saúde financeira familiar: Receita R$ ${stats.income}, Despesa R$ ${stats.expense}, Investimentos R$ ${stats.totalInv}. Categorias: ${categoryData.map(c => c.category + ': R$ ' + c.total).join(', ')}. Responda como um CFO familiar em Português do Brasil, curto e motivador.`;
+      const prompt = buildGeminiPrompt(
+        selectedPeriod,
+        stats,
+        categoryData,
+        isCurrentMonth,
+      );
       const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-      setAiAnalysis(response.text || "Análise indisponível.");
-    } catch (e) { setAiAnalysis("Erro na análise."); }
-    finally { setIsAiLoading(false); }
+      setAiAnalysis(response.text || 'Análise indisponível.');
+    } catch {
+      setAiError('Erro ao gerar análise. Tente novamente.');
+      setAiAnalysis(null);
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -481,8 +602,29 @@ const App: React.FC = () => {
     }
   };
 
-  // Função para criar transação
-  const handleCreateTransaction = async (transactionData: {description: string, amount: number, type: 'income' | 'expense', category: string, date: string}) => {
+  const closeTransactionModal = () => {
+    setIsModalOpen(false);
+    setEditingTransaction(null);
+  };
+
+  const openCreateModal = () => {
+    setEditingTransaction(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+  };
+
+  const handleSaveTransaction = async (transactionData: TransactionFormData) => {
+    if (editingTransaction) {
+      await handleUpdateTransaction(editingTransaction.id, transactionData);
+    } else {
+      await handleCreateTransaction(transactionData);
+    }
+  };
+
+  const handleCreateTransaction = async (transactionData: TransactionFormData) => {
     if (!appUser) return;
     
     try {
@@ -491,18 +633,41 @@ const App: React.FC = () => {
         amount: transactionData.amount,
         type: transactionData.type,
         category: transactionData.category,
-        date: transactionData.date
-      });
+        date: transactionData.date,
+      }, primaryFamilyId);
       
-      // Recarregar transações
-      await loadTransactions();
+      await Promise.all([loadTransactions(), loadWalletBalance()]);
     } catch (error) {
       console.error('Error creating transaction:', error);
       alert('Erro ao criar transação. Tente novamente.');
     }
   };
 
-  // Função para deletar transação
+  const handleUpdateTransaction = async (transactionId: string, transactionData: TransactionFormData) => {
+    if (!appUser) return;
+
+    try {
+      const updated = await transactionsService.update(transactionId, appUser.id, {
+        description: transactionData.description,
+        amount: transactionData.amount,
+        type: transactionData.type,
+        category: transactionData.category,
+        date: transactionData.date,
+      });
+
+      if (!updated) {
+        alert('Erro ao atualizar transação. Tente novamente.');
+        return;
+      }
+
+      closeTransactionModal();
+      await Promise.all([loadTransactions(), loadWalletBalance()]);
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      alert('Erro ao atualizar transação. Tente novamente.');
+    }
+  };
+
   const handleDeleteTransaction = async (transactionId: string) => {
     if (!appUser) return;
     
@@ -511,8 +676,7 @@ const App: React.FC = () => {
     try {
       await transactionsService.delete(transactionId, appUser.id);
       
-      // Recarregar transações
-      await loadTransactions();
+      await Promise.all([loadTransactions(), loadWalletBalance()]);
     } catch (error) {
       console.error('Error deleting transaction:', error);
       alert('Erro ao deletar transação. Tente novamente.');
@@ -603,29 +767,70 @@ const App: React.FC = () => {
       <main className="px-6 space-y-8">
         {activeTab === 'resumo' && (
           <div className="space-y-8">
+            <MonthSelector />
+            <div className="glass rounded-[2.5rem] p-6 bg-gradient-to-br from-emerald-600/20 to-transparent border-white/10">
+              <div className="flex items-center gap-2 mb-1">
+                <Wallet size={14} className="text-emerald-400" />
+                <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Saldo em Carteira</span>
+              </div>
+              {isLoadingWallet ? (
+                <div className="flex items-center gap-3 py-4">
+                  <Loader2 size={24} className="animate-spin text-emerald-400" />
+                  <span className="text-sm text-zinc-500">Calculando...</span>
+                </div>
+              ) : walletError ? (
+                <p className="text-sm text-rose-300 py-2">{walletError}</p>
+              ) : (
+                <>
+                  <h2 className="text-5xl font-black mb-1 tracking-tighter">
+                    R$ {(walletBalance?.balance ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </h2>
+                  <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-3">Total acumulado da família</p>
+                  <div className="flex gap-4">
+                    <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-black">
+                      <ArrowUpRight size={14} /> R$ {(walletBalance?.income ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-rose-400 text-[10px] font-black">
+                      <ArrowDownLeft size={14} /> R$ {(walletBalance?.expense ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
             <div className="glass rounded-[2.5rem] p-6 bg-gradient-to-br from-blue-600/20 to-transparent border-white/10">
-              <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Saldo Familiar</span>
-              <h2 className="text-5xl font-black mb-4 tracking-tighter">R$ {stats.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar size={14} className="text-blue-400" />
+                <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Saldo do Mês</span>
+              </div>
+              <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-2">{periodLabel}</p>
+              <h2 className="text-4xl font-black mb-4 tracking-tighter">R$ {stats.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h2>
               <div className="flex gap-4">
-                <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-black"><ArrowUpRight size={14} /> R$ {stats.income.toLocaleString()}</div>
-                <div className="flex items-center gap-1.5 text-rose-400 text-[10px] font-black"><ArrowDownLeft size={14} /> R$ {stats.expense.toLocaleString()}</div>
+                <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-black"><ArrowUpRight size={14} /> R$ {stats.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                <div className="flex items-center gap-1.5 text-rose-400 text-[10px] font-black"><ArrowDownLeft size={14} /> R$ {stats.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
               </div>
             </div>
 
             <section className="space-y-4">
               <h3 className="text-xl font-black flex items-center gap-2 tracking-tighter"><Sparkles size={22} className="text-amber-400" /> Consultoria IA</h3>
+              {aiError && (
+                <div className="glass rounded-2xl p-4 border-rose-500/20 bg-rose-500/10 text-sm text-rose-300 flex items-center gap-2">
+                  <AlertCircle size={16} />
+                  {aiError}
+                </div>
+              )}
               {!aiAnalysis ? (
                 <button onClick={handleAiAnalysis} disabled={isAiLoading} className="w-full glass rounded-3xl p-6 border-blue-500/20 bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="p-3 bg-blue-600 rounded-2xl">{isAiLoading ? <Loader2 className="animate-spin" /> : <BrainCircuit />}</div>
-                    <div className="text-left"><p className="text-sm font-black">Análise do Consultor</p><p className="text-[10px] text-zinc-500">Avaliar mês atual</p></div>
+                    <div className="text-left"><p className="text-sm font-black">Análise do Consultor</p><p className="text-[10px] text-zinc-500">Avaliar {periodLabel}</p></div>
                   </div>
                   <ChevronRight size={20} className="text-zinc-600" />
                 </button>
               ) : (
                 <div className="glass rounded-3xl p-6 border-white/10 bg-white/5 animate-scale-in text-sm text-zinc-200 leading-relaxed">
                   {aiAnalysis}
-                  <button onClick={() => setAiAnalysis(null)} className="mt-4 block text-[9px] font-black text-zinc-600 uppercase">Recalcular</button>
+                  <button onClick={() => { setAiAnalysis(null); setAiError(null); }} className="mt-4 block text-[9px] font-black text-zinc-600 uppercase">Recalcular</button>
                 </div>
               )}
             </section>
@@ -641,18 +846,29 @@ const App: React.FC = () => {
 
             <section className="space-y-6">
               <h3 className="text-xl font-black flex items-center gap-2 tracking-tighter"><TrendingUp size={22} className="text-emerald-500" /> Fluxo de Gastos</h3>
-              <TrendChart data={trendData} />
+              {isLoadingTransactions ? (
+                <div className="flex justify-center py-8"><Loader2 size={28} className="animate-spin text-blue-500" /></div>
+              ) : transactionsError ? (
+                <div className="glass rounded-2xl p-4 border-rose-500/20 text-sm text-rose-300">{transactionsError}</div>
+              ) : (
+                <TrendChart data={trendData} />
+              )}
             </section>
 
             <section className="space-y-6">
               <h3 className="text-xl font-black flex items-center gap-2 tracking-tighter"><Activity size={22} className="text-blue-500" /> Categorias</h3>
-              <DonutChart data={categoryData} />
+              {categoryData.length === 0 ? (
+                <div className="glass rounded-2xl p-6 text-center text-zinc-500 text-sm">Nenhum gasto em {periodLabel}.</div>
+              ) : (
+                <DonutChart data={categoryData} />
+              )}
             </section>
           </div>
         )}
 
         {activeTab === 'histórico' && (
           <div className="space-y-6">
+            <MonthSelector />
             <div className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-2xl px-5 py-4">
               <Search size={20} className="text-zinc-600" />
               <input type="text" placeholder="Filtrar por membro ou descrição..." value={search} onChange={e => setSearch(e.target.value)} className="bg-transparent border-none outline-none w-full text-white font-bold" />
@@ -661,15 +877,30 @@ const App: React.FC = () => {
               <div className="flex justify-center items-center py-12">
                 <Loader2 size={32} className="animate-spin text-blue-500" />
               </div>
+            ) : transactionsError ? (
+              <div className="text-center py-12">
+                <AlertCircle size={32} className="mx-auto text-rose-500 mb-3" />
+                <p className="text-zinc-500 font-bold">{transactionsError}</p>
+              </div>
             ) : (
               <div className="space-y-4">
-                {transactions.filter(t => t.description.toLowerCase().includes(search.toLowerCase())).map((t, i) => (
-                  <TransactionItem key={t.id} transaction={t} index={i} familyMembers={allFamilyMembers} onDelete={handleDeleteTransaction} />
-                ))}
-                {transactions.length === 0 && (
+                {periodTransactions
+                  .filter(t => t.description.toLowerCase().includes(search.toLowerCase()))
+                  .map((t, i) => (
+                    <TransactionItem
+                      key={t.id}
+                      transaction={t}
+                      index={i}
+                      familyMembers={allFamilyMembers}
+                      currentUserId={appUser?.id}
+                      onEdit={openEditModal}
+                      onDelete={handleDeleteTransaction}
+                    />
+                  ))}
+                {periodTransactions.length === 0 && (
                   <div className="text-center py-12">
-                    <p className="text-zinc-500 font-bold">Nenhuma transação ainda.</p>
-                    <p className="text-xs text-zinc-600 mt-2">Clique no botão + para adicionar.</p>
+                    <p className="text-zinc-500 font-bold">Nenhuma transação em {periodLabel}.</p>
+                    <p className="text-xs text-zinc-600 mt-2">Clique no botão + para adicionar ou navegue para outro mês.</p>
                   </div>
                 )}
               </div>
@@ -679,14 +910,15 @@ const App: React.FC = () => {
 
         {activeTab === 'orçamentos' && (
           <div className="space-y-6">
+            <MonthSelector />
             <div className="glass rounded-[2.5rem] p-8 bg-gradient-to-br from-emerald-600/10 to-transparent border-white/5">
               <h2 className="text-4xl font-black tracking-tighter mb-2">Monitoramento</h2>
               <p className="text-xs text-zinc-500 font-bold uppercase tracking-tighter">Limites definidos para toda a residência.</p>
             </div>
             <div className="space-y-4">
               {budgets.map(b => {
-                const spent = filteredTransactions.filter(t => t.category === b.category && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-                return <BudgetProgressCard key={b.category} budget={b} spent={spent} onDelete={cat => { storageService.removeBudget(cat); setBudgets(storageService.getBudgets()); }} />;
+                const spent = periodTransactions.filter(t => t.category === b.category && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                return <BudgetProgressCard key={b.category} budget={b} spent={spent} onDelete={cat => { budgetStorageService.removeBudget(cat); setBudgets(budgetStorageService.getBudgets()); }} />;
               })}
             </div>
             <button onClick={() => setIsBudgetModalOpen(true)} className="w-full py-5 glass rounded-[2rem] border-blue-500/20 text-blue-400 font-black flex items-center justify-center gap-3 active:scale-95 transition-all">
@@ -697,6 +929,7 @@ const App: React.FC = () => {
 
         {activeTab === 'família' && (
           <div className="space-y-8 animate-fade-in">
+            <MonthSelector />
             {families.length > 0 ? (
               <>
                 {families.map(family => (
@@ -721,18 +954,12 @@ const App: React.FC = () => {
                         {family.members.map(member => {
                           // Calcular consumo do mês: filtrar transações do membro no mês selecionado
                           // filteredTransactions já está filtrado por mês, só precisamos filtrar por membro e tipo
-                          const memberTransactions = filteredTransactions.filter(t => t.user_id === member.id && t.type === 'expense');
+                          const memberTransactions = periodTransactions.filter(t => t.user_id === member.id && t.type === 'expense');
                           const memberSpent = memberTransactions.reduce((sum, t) => {
-                            // Converter amount para number (pode vir como string do Supabase)
                             const amount = typeof t.amount === 'string' ? parseFloat(t.amount) : t.amount;
                             return sum + (amount || 0);
                           }, 0);
-                          
-                          // Debug (remover depois)
-                          if (memberSpent > 0 || memberTransactions.length > 0) {
-                            console.log(`💰 ${member.name}: ${memberTransactions.length} transações, Total: R$ ${memberSpent.toFixed(2)}`);
-                          }
-                          
+
                           return (
                             <div key={member.id} className="glass p-5 rounded-[2rem] flex items-center justify-between bg-white/5">
                               <div className="flex items-center gap-4">
@@ -779,7 +1006,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-28 right-6 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl z-40 active:scale-90 transition-transform"><Plus size={32} strokeWidth={4} className="text-white" /></button>
+      <button onClick={openCreateModal} className="fixed bottom-28 right-6 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl z-40 active:scale-90 transition-transform"><Plus size={32} strokeWidth={4} className="text-white" /></button>
 
       <nav className="fixed bottom-0 left-0 right-0 h-24 glass-dark px-6 flex items-center justify-around z-30 pb-[safe-area-inset-bottom]">
          {[
@@ -797,10 +1024,10 @@ const App: React.FC = () => {
       {appUser && (
         <>
           <TransactionModal 
-            isOpen={isModalOpen} 
-            onClose={() => setIsModalOpen(false)} 
-            onSave={(t) => handleCreateTransaction(t)}
-            currentUserId={appUser.id}
+            isOpen={isModalOpen || !!editingTransaction} 
+            onClose={closeTransactionModal} 
+            onSave={handleSaveTransaction}
+            transaction={editingTransaction}
           />
           <BudgetModal 
             isOpen={isBudgetModalOpen} 
@@ -838,7 +1065,11 @@ const AppWrapper: React.FC = () => {
     return <AuthScreen />;
   }
 
-  return <App />;
+  return (
+    <PeriodProvider>
+      <App />
+    </PeriodProvider>
+  );
 };
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);

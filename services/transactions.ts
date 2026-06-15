@@ -1,4 +1,7 @@
 import { supabase } from './supabase';
+import type { DateRange, SelectedPeriod } from '../types/financial';
+import { getLocalBoundaryIsoStrings } from '../utils/period';
+import { filterTransactionsByRange } from '../utils/financial';
 
 // =====================================================
 // TIPOS
@@ -24,6 +27,12 @@ export interface CreateTransactionInput {
   type: 'income' | 'expense';
   category: string;
   family_id?: string | null;
+}
+
+export interface TransactionPeriodQuery {
+  userIds: string[];
+  range: DateRange;
+  familyId?: string | null;
 }
 
 // =====================================================
@@ -55,32 +64,57 @@ export const transactionsService = {
   },
 
   /**
-   * Buscar transações de um mês específico
+   * Buscar transações de um mês específico (legado — prefira getByPeriod)
    */
   async getByMonth(userId: string, yearMonth: string): Promise<Transaction[]> {
+    const [year, month] = yearMonth.split('-').map(Number);
+    const period: SelectedPeriod = { year, month };
+    return this.getByUserIdsInPeriod({
+      userIds: [userId],
+      range: {
+        start: `${yearMonth}-01`,
+        endExclusive: month === 12
+          ? `${year + 1}-01-01`
+          : `${year}-${String(month + 1).padStart(2, '0')}-01`,
+      },
+    });
+  },
+
+  /**
+   * Buscar transações por membros, período e família opcional
+   */
+  async getByUserIdsInPeriod(query: TransactionPeriodQuery): Promise<Transaction[]> {
+    const { userIds, range, familyId } = query;
     try {
-      // yearMonth formato: "2025-01"
-      const startDate = `${yearMonth}-01`;
-      const endDate = new Date(parseInt(yearMonth.split('-')[0]), parseInt(yearMonth.split('-')[1]), 0)
-        .toISOString()
-        .split('T')[0];
+      if (userIds.length === 0) return [];
+
+      const [startYear, startMonth] = range.start.split('-').map(Number);
+      const boundaries = getLocalBoundaryIsoStrings({
+        year: startYear,
+        month: startMonth,
+      });
+
+      // familyId é contexto de escopo (RLS + membros); não filtramos por family_id
+      // pois transações legadas podem ter family_id nulo.
+      void familyId;
 
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
-        .eq('user_id', userId)
-        .gte('date', startDate)
-        .lte('date', endDate)
+        .in('user_id', userIds)
+        .gte('date', boundaries.startIso)
+        .lt('date', boundaries.endExclusiveIso)
         .order('date', { ascending: false });
 
       if (error) {
-        console.error('Error fetching transactions by month:', error);
+        console.error('Error fetching transactions by period:', error);
         throw error;
       }
 
-      return data || [];
+      const rows = data || [];
+      return filterTransactionsByRange(rows, range);
     } catch (error) {
-      console.error('Unexpected error in getByMonth:', error);
+      console.error('Unexpected error in getByUserIdsInPeriod:', error);
       return [];
     }
   },
@@ -88,7 +122,11 @@ export const transactionsService = {
   /**
    * Criar nova transação
    */
-  async create(userId: string, input: CreateTransactionInput): Promise<Transaction | null> {
+  async create(
+    userId: string,
+    input: CreateTransactionInput,
+    familyId?: string | null,
+  ): Promise<Transaction | null> {
     try {
       const { data, error } = await supabase
         .from('transactions')
@@ -99,7 +137,7 @@ export const transactionsService = {
           date: input.date || new Date().toISOString(),
           type: input.type,
           category: input.category,
-          family_id: null, // Sempre null - transações são individuais
+          family_id: input.family_id ?? familyId ?? null,
         })
         .select()
         .single();

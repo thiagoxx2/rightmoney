@@ -39,3 +39,10 @@ PROXIMOS_PASSOS.md
 SETUP_AUTH.md
 TESTE_AGORA.md
 ULTIMOS_PASSOS.md
+
+.agents/
+skills-lock.json
+.cursor/
+.mcp.json
+supabase_schema.sql
+supabase/

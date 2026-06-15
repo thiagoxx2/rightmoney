@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   amount DECIMAL(10, 2) NOT NULL CHECK (amount >= 0),
   date TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
-  category TEXT NOT NULL,
+  category TEXT NOT NULL, -- Padrões despesa: Mercado, Padaria, Lanche, Lazer, Transporte, Saúde, Educação, E-commerce, Compras Físicas, Investimentos, Empresa, Moradia, Assinaturas, Pet, Bem-estar, Outros
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -190,6 +190,18 @@ CREATE POLICY "Family members can view family transactions" ON public.transactio
       WHERE family_members.family_id = transactions.family_id AND family_members.user_id = auth.uid()
     )
   );
+
+DROP POLICY IF EXISTS "Family members can view co-member transactions" ON public.transactions;
+CREATE POLICY "Family members can view co-member transactions" ON public.transactions
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.family_members fm_viewer
+      INNER JOIN public.family_members fm_owner ON fm_viewer.family_id = fm_owner.family_id
+      WHERE fm_viewer.user_id = auth.uid() AND fm_owner.user_id = transactions.user_id
+    )
+  );
+
+CREATE INDEX IF NOT EXISTS transactions_family_date_idx ON public.transactions(family_id, date DESC);
 
 CREATE POLICY "Users can insert own transactions" ON public.transactions
   FOR INSERT WITH CHECK (user_id = auth.uid());
