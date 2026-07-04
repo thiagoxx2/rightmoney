@@ -3,7 +3,9 @@ import type {
   CumulativeBalance,
   DailyExpense,
   DateRange,
+  DayTransactionTotals,
   MonthlyFinancialSummary,
+  TransactionDayGroup,
 } from '../types/financial';
 import type { Transaction } from '../services/transactions';
 import type { SelectedPeriod } from '../types/financial';
@@ -94,6 +96,62 @@ export function computeCategoryTotals(
     category,
     total,
   }));
+}
+
+export function formatDayLabel(financialDate: string, now = new Date()): string {
+  const today = toFinancialDate(now.toISOString());
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = toFinancialDate(yesterdayDate.toISOString());
+
+  const [year, month, day] = financialDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+
+  if (financialDate === today) return 'Hoje';
+  if (financialDate === yesterday) return 'Ontem';
+
+  const weekday = date.toLocaleDateString('pt-BR', { weekday: 'long' });
+  const monthName = date.toLocaleDateString('pt-BR', { month: 'long' });
+  const capitalizedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `${capitalizedWeekday}, ${day} de ${monthName}`;
+}
+
+function computeDayTotals(transactions: Transaction[]): DayTransactionTotals {
+  return transactions.reduce(
+    (acc, t) => {
+      const amount = parseAmount(t.amount);
+      if (t.type === 'income') acc.income += amount;
+      else acc.expense += amount;
+      return acc;
+    },
+    { income: 0, expense: 0 },
+  );
+}
+
+export function groupTransactionsByDay(
+  transactions: Transaction[],
+): TransactionDayGroup<Transaction>[] {
+  const map = new Map<string, Transaction[]>();
+
+  for (const transaction of transactions) {
+    const day = toFinancialDate(transaction.date);
+    const list = map.get(day) ?? [];
+    list.push(transaction);
+    map.set(day, list);
+  }
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, dayTransactions]) => {
+      const sorted = [...dayTransactions].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      );
+      return {
+        date,
+        transactions: sorted,
+        totals: computeDayTotals(sorted),
+      };
+    });
 }
 
 export function computeDailyExpenses(

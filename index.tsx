@@ -26,6 +26,8 @@ import {
   computeCumulativeBalance,
   computeDailyExpenses,
   computeMonthlySummary,
+  formatDayLabel,
+  groupTransactionsByDay,
   parseAmount,
   toFinancialDate,
 } from './utils/financial';
@@ -554,6 +556,18 @@ const App: React.FC = () => {
 
   const periodTransactions = transactions;
 
+  const filteredHistoryTransactions = useMemo(
+    () => periodTransactions.filter(t =>
+      t.description.toLowerCase().includes(search.toLowerCase()),
+    ),
+    [periodTransactions, search],
+  );
+
+  const historyByDay = useMemo(
+    () => groupTransactionsByDay(filteredHistoryTransactions),
+    [filteredHistoryTransactions],
+  );
+
   const stats = useMemo(
     () => computeMonthlySummary(periodTransactions),
     [periodTransactions],
@@ -882,27 +896,58 @@ const App: React.FC = () => {
                 <AlertCircle size={32} className="mx-auto text-rose-500 mb-3" />
                 <p className="text-zinc-500 font-bold">{transactionsError}</p>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {periodTransactions
-                  .filter(t => t.description.toLowerCase().includes(search.toLowerCase()))
-                  .map((t, i) => (
-                    <TransactionItem
-                      key={t.id}
-                      transaction={t}
-                      index={i}
-                      familyMembers={allFamilyMembers}
-                      currentUserId={appUser?.id}
-                      onEdit={openEditModal}
-                      onDelete={handleDeleteTransaction}
-                    />
-                  ))}
+            ) : historyByDay.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-zinc-500 font-bold">
+                  {periodTransactions.length === 0
+                    ? `Nenhuma transação em ${periodLabel}.`
+                    : 'Nenhuma transação encontrada para este filtro.'}
+                </p>
                 {periodTransactions.length === 0 && (
-                  <div className="text-center py-12">
-                    <p className="text-zinc-500 font-bold">Nenhuma transação em {periodLabel}.</p>
-                    <p className="text-xs text-zinc-600 mt-2">Clique no botão + para adicionar ou navegue para outro mês.</p>
-                  </div>
+                  <p className="text-xs text-zinc-600 mt-2">Clique no botão + para adicionar ou navegue para outro mês.</p>
                 )}
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {historyByDay.map((dayGroup) => (
+                  <section key={dayGroup.date} className="space-y-3">
+                    <div className="flex items-end justify-between gap-4 px-1 sticky top-0 z-10 py-2 bg-black/80 backdrop-blur-md -mx-1">
+                      <div>
+                        <h3 className="text-sm font-black text-white tracking-tight">
+                          {formatDayLabel(dayGroup.date)}
+                        </h3>
+                        <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
+                          {dayGroup.transactions.length} {dayGroup.transactions.length === 1 ? 'lançamento' : 'lançamentos'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {dayGroup.totals.expense > 0 && (
+                          <p className="text-xs font-black text-rose-400">
+                            - {dayGroup.totals.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        )}
+                        {dayGroup.totals.income > 0 && (
+                          <p className="text-xs font-black text-emerald-400">
+                            + {dayGroup.totals.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {dayGroup.transactions.map((t, i) => (
+                        <TransactionItem
+                          key={t.id}
+                          transaction={t}
+                          index={i}
+                          familyMembers={allFamilyMembers}
+                          currentUserId={appUser?.id}
+                          onEdit={openEditModal}
+                          onDelete={handleDeleteTransaction}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
               </div>
             )}
           </div>

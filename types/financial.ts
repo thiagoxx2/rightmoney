@@ -36,6 +36,17 @@ export interface DailyExpense {
   amount: number;
 }
 
+export interface DayTransactionTotals {
+  income: number;
+  expense: number;
+}
+
+export interface TransactionDayGroup<T = unknown> {
+  date: string;
+  transactions: T[];
+  totals: DayTransactionTotals;
+}
+
 export interface MonthlyTransactionGroup<T = unknown> {
   period: SelectedPeriod;
   transactions: T[];
