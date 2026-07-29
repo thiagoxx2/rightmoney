@@ -6,6 +6,7 @@ export const INCOME_CATEGORIES = [
   'Investimentos',
   'Empresa',
   'Vendas',
+  'Pix',
   'Outros',
 ] as const;
 
@@ -28,6 +29,7 @@ export const EXPENSE_CATEGORIES = [
   'Assinaturas',
   'Pet',
   'Bem-estar',
+  'Pix',
   'Outros',
 ] as const;
 
