@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { 
   Plus, Wallet, ArrowUpRight, ArrowDownLeft, Activity, 
@@ -468,6 +468,7 @@ const App: React.FC = () => {
   const [walletBalance, setWalletBalance] = useState<CumulativeBalance | null>(null);
   const [isLoadingWallet, setIsLoadingWallet] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
+  const pendingScrollY = useRef<number | null>(null);
 
   const primaryFamilyId = families[0]?.id ?? null;
 
@@ -480,10 +481,24 @@ const App: React.FC = () => {
     return Array.from(ids);
   }, [appUser, families]);
 
-  const loadTransactions = async () => {
+  useLayoutEffect(() => {
+    if (pendingScrollY.current === null) return;
+    const y = pendingScrollY.current;
+    window.scrollTo(0, y);
+    // Mantém a posição por um frame — create/update podem disparar 2 setStates.
+    const id = requestAnimationFrame(() => {
+      window.scrollTo(0, y);
+      pendingScrollY.current = null;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [transactions, walletBalance]);
+
+  const loadTransactions = async (options?: { silent?: boolean }) => {
     if (!appUser) return;
 
-    setIsLoadingTransactions(true);
+    if (!options?.silent) {
+      setIsLoadingTransactions(true);
+    }
     setTransactionsError(null);
     try {
       const data = await transactionsService.getByUserIdsInPeriod({
@@ -497,14 +512,18 @@ const App: React.FC = () => {
       setTransactionsError('Não foi possível carregar as transações deste período.');
       setTransactions([]);
     } finally {
-      setIsLoadingTransactions(false);
+      if (!options?.silent) {
+        setIsLoadingTransactions(false);
+      }
     }
   };
 
-  const loadWalletBalance = async () => {
+  const loadWalletBalance = async (options?: { silent?: boolean }) => {
     if (!appUser || familyMemberIds.length === 0) return;
 
-    setIsLoadingWallet(true);
+    if (!options?.silent) {
+      setIsLoadingWallet(true);
+    }
     setWalletError(null);
     try {
       const allTransactions = await transactionsService.getByUserIds(familyMemberIds);
@@ -514,8 +533,21 @@ const App: React.FC = () => {
       setWalletError('Não foi possível calcular o saldo em carteira.');
       setWalletBalance(null);
     } finally {
-      setIsLoadingWallet(false);
+      if (!options?.silent) {
+        setIsLoadingWallet(false);
+      }
     }
+  };
+
+  /** Recarrega dados sem spinner e mantém a posição de scroll. */
+  const refreshAfterMutation = async () => {
+    if (pendingScrollY.current === null) {
+      pendingScrollY.current = window.scrollY;
+    }
+    await Promise.all([
+      loadTransactions({ silent: true }),
+      loadWalletBalance({ silent: true }),
+    ]);
   };
 
   // Carregar famílias do Supabase
@@ -650,7 +682,7 @@ const App: React.FC = () => {
         date: transactionData.date,
       }, primaryFamilyId);
       
-      await Promise.all([loadTransactions(), loadWalletBalance()]);
+      await refreshAfterMutation();
     } catch (error) {
       console.error('Error creating transaction:', error);
       alert('Erro ao criar transação. Tente novamente.');
@@ -659,6 +691,9 @@ const App: React.FC = () => {
 
   const handleUpdateTransaction = async (transactionId: string, transactionData: TransactionFormData) => {
     if (!appUser) return;
+
+    // Captura o scroll antes de fechar o modal (no iOS o teclado/modal pode alterar o scroll).
+    pendingScrollY.current = window.scrollY;
 
     try {
       const updated = await transactionsService.update(transactionId, appUser.id, {
@@ -670,13 +705,15 @@ const App: React.FC = () => {
       });
 
       if (!updated) {
+        pendingScrollY.current = null;
         alert('Erro ao atualizar transação. Tente novamente.');
         return;
       }
 
       closeTransactionModal();
-      await Promise.all([loadTransactions(), loadWalletBalance()]);
+      await refreshAfterMutation();
     } catch (error) {
+      pendingScrollY.current = null;
       console.error('Error updating transaction:', error);
       alert('Erro ao atualizar transação. Tente novamente.');
     }
@@ -690,7 +727,7 @@ const App: React.FC = () => {
     try {
       await transactionsService.delete(transactionId, appUser.id);
       
-      await Promise.all([loadTransactions(), loadWalletBalance()]);
+      await refreshAfterMutation();
     } catch (error) {
       console.error('Error deleting transaction:', error);
       alert('Erro ao deletar transação. Tente novamente.');
