@@ -30,6 +30,8 @@ export const EXPENSE_CATEGORIES = [
   'Pet',
   'Bem-estar',
   'Pix',
+  'Revisar',
+  'Juros',
   'Outros',
 ] as const;
 
