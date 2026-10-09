@@ -38,7 +38,7 @@ const FamilyModal: React.FC<FamilyModalProps> = ({ isOpen, onClose, onCreateFami
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 theme-overlay backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full glass rounded-t-[3rem] p-8 pb-12 animate-slide-up safe-pb max-h-[80vh] flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-black tracking-tighter">Família</h2>
@@ -83,7 +83,7 @@ const FamilyModal: React.FC<FamilyModalProps> = ({ isOpen, onClose, onCreateFami
                 onChange={(e) => setFamilyName(e.target.value)}
                 placeholder="Ex: Residência Silva"
                 required
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white font-bold placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full theme-input border rounded-2xl px-5 py-4 font-bold placeholder-zinc-600 focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
           ) : (
@@ -98,7 +98,7 @@ const FamilyModal: React.FC<FamilyModalProps> = ({ isOpen, onClose, onCreateFami
                 placeholder="Ex: ABC12345"
                 maxLength={8}
                 required
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white font-bold placeholder-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors uppercase text-center text-2xl tracking-widest"
+                className="w-full theme-input border rounded-2xl px-5 py-4 font-bold placeholder-zinc-600 focus:outline-none focus:border-emerald-500 transition-colors uppercase text-center text-2xl tracking-widest"
               />
               <p className="text-xs text-zinc-600 mt-2 text-center">
                 Peça o código para um membro da família

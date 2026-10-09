@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="dark" data-theme="dark">
 
 <head>
     <meta charset="UTF-8">
@@ -10,6 +10,27 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Finança">
+    <meta name="theme-color" content="#000000">
+
+    <!-- Evita flash: aplica tema salvo antes do React -->
+    <script>
+        (function () {
+            try {
+                var stored = localStorage.getItem('financa_theme_v1');
+                var theme = stored === 'light' || stored === 'dark'
+                    ? stored
+                    : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+                var root = document.documentElement;
+                root.dataset.theme = theme;
+                root.classList.toggle('light', theme === 'light');
+                root.classList.toggle('dark', theme === 'dark');
+                var meta = document.querySelector('meta[name="theme-color"]');
+                if (meta) meta.setAttribute('content', theme === 'light' ? '#e6e7ea' : '#000000');
+                var bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+                if (bar) bar.setAttribute('content', theme === 'light' ? 'default' : 'black-translucent');
+            } catch (e) { /* ignore */ }
+        })();
+    </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,6 +42,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
@@ -55,28 +77,225 @@
         }
     </script>
     <style>
+        /* ========== Tokens — Dark (padrão) ========== */
+        :root,
+        html.dark {
+            --page-bg: #000000;
+            --page-bg-soft: #0a0a0a;
+            --fg: #ffffff;
+            --fg-muted: #71717a;
+            --fg-subtle: #52525b;
+            --surface: rgba(255, 255, 255, 0.05);
+            --surface-raised: rgba(255, 255, 255, 0.07);
+            --surface-strong: rgba(0, 0, 0, 0.4);
+            --surface-chip: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.1);
+            --border-soft: rgba(255, 255, 255, 0.05);
+            --overlay: rgba(0, 0, 0, 0.8);
+            --sticky: rgba(0, 0, 0, 0.82);
+            --nav: rgba(0, 0, 0, 0.65);
+            --input: rgba(255, 255, 255, 0.05);
+            --inner: rgba(0, 0, 0, 0.3);
+            --glass-bg: rgba(255, 255, 255, 0.07);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            --nav-inactive: #3f3f46;
+            color-scheme: dark;
+        }
+
+        /* ========== Tokens — Light (cinza suave, confortável) ========== */
+        html.light {
+            --page-bg: #e6e7ea;
+            --page-bg-soft: #eceef1;
+            --fg: #1c1d21;
+            --fg-muted: #5c6370;
+            --fg-subtle: #8b919c;
+            --surface: rgba(255, 255, 255, 0.62);
+            --surface-raised: rgba(255, 255, 255, 0.78);
+            --surface-strong: rgba(255, 255, 255, 0.88);
+            --surface-chip: rgba(255, 255, 255, 0.72);
+            --border: rgba(28, 29, 33, 0.08);
+            --border-soft: rgba(28, 29, 33, 0.05);
+            --overlay: rgba(55, 60, 70, 0.42);
+            --sticky: rgba(230, 231, 234, 0.92);
+            --nav: rgba(244, 245, 247, 0.92);
+            --input: rgba(255, 255, 255, 0.92);
+            --inner: rgba(28, 29, 33, 0.04);
+            --glass-bg: rgba(255, 255, 255, 0.72);
+            --glass-border: rgba(28, 29, 33, 0.07);
+            --glass-shadow: 0 6px 28px 0 rgba(40, 44, 52, 0.08);
+            --nav-inactive: #9aa0a8;
+            color-scheme: light;
+        }
+
         body {
-            background-color: #000000;
-            color: white;
+            background-color: var(--page-bg);
+            color: var(--fg);
             -webkit-tap-highlight-color: transparent;
             overscroll-behavior-y: none;
             overflow-x: hidden;
             user-select: none;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        .theme-page {
+            background-color: var(--page-bg);
+            color: var(--fg);
+        }
+
+        .theme-fg {
+            color: var(--fg) !important;
+        }
+
+        .theme-muted {
+            color: var(--fg-muted) !important;
+        }
+
+        .theme-surface {
+            background: var(--surface) !important;
+            border-color: var(--border) !important;
+        }
+
+        .theme-chip {
+            background: var(--surface-chip) !important;
+            border-color: var(--border) !important;
+        }
+
+        .theme-input {
+            background: var(--input) !important;
+            border-color: var(--border) !important;
+            color: var(--fg) !important;
+        }
+
+        .theme-overlay {
+            background: var(--overlay) !important;
+        }
+
+        .theme-sticky {
+            background: var(--sticky) !important;
+        }
+
+        .theme-inner {
+            background: var(--inner) !important;
+            border-color: var(--border-soft) !important;
+        }
+
+        .theme-card {
+            background: var(--surface-strong) !important;
+            border-color: var(--border-soft) !important;
         }
 
         .glass {
-            background: rgba(255, 255, 255, 0.07);
+            background: var(--glass-bg);
             backdrop-filter: blur(25px);
             -webkit-backdrop-filter: blur(25px);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
         }
 
         .glass-dark {
-            background: rgba(0, 0, 0, 0.6);
+            background: var(--nav);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid var(--border);
+        }
+
+        /* Em modo claro, suaviza superfícies “pretas” e textos brancos estruturais */
+        html.light .bg-black {
+            background-color: var(--page-bg) !important;
+        }
+
+        html.light .bg-black\/40,
+        html.light .bg-black\/30 {
+            background-color: var(--surface-strong) !important;
+        }
+
+        html.light .bg-black\/80 {
+            background-color: var(--overlay) !important;
+        }
+
+        html.light .text-white {
+            color: var(--fg) !important;
+        }
+
+        /* Mantém texto branco em botões/accents coloridos */
+        html.light button.bg-blue-600,
+        html.light button.bg-blue-500,
+        html.light button.bg-rose-500,
+        html.light button.bg-emerald-500,
+        html.light button.bg-emerald-600,
+        html.light button.bg-violet-600,
+        html.light button.bg-violet-500,
+        html.light .bg-blue-600,
+        html.light .bg-blue-500,
+        html.light .bg-rose-500,
+        html.light .bg-emerald-500,
+        html.light .bg-emerald-600,
+        html.light .bg-violet-600,
+        html.light .bg-violet-500 {
+            color: #ffffff !important;
+        }
+
+        html.light .bg-blue-600 .text-white,
+        html.light .bg-blue-500 .text-white,
+        html.light .bg-rose-500 .text-white,
+        html.light .bg-emerald-500 .text-white,
+        html.light .bg-emerald-600 .text-white,
+        html.light .bg-violet-600 .text-white,
+        html.light .bg-violet-500 .text-white {
+            color: #ffffff !important;
+        }
+
+        html.light .bg-blue-600 svg,
+        html.light .bg-emerald-600 svg,
+        html.light .bg-violet-600 svg,
+        html.light .bg-rose-500 svg {
+            color: #ffffff !important;
+        }
+
+        html.light .border-white\/5,
+        html.light .border-white\/10 {
+            border-color: var(--border) !important;
+        }
+
+        html.light .bg-white\/5,
+        html.light .bg-white\/\[0\.03\],
+        html.light .bg-white\/\[0\.02\] {
+            background-color: var(--surface-chip) !important;
+        }
+
+        html.light .bg-white\/10,
+        html.light .bg-white\/20 {
+            background-color: rgba(255, 255, 255, 0.85) !important;
+        }
+
+        html.light .text-zinc-200,
+        html.light .text-zinc-300 {
+            color: #3f4550 !important;
+        }
+
+        html.light .text-zinc-500 {
+            color: var(--fg-muted) !important;
+        }
+
+        html.light .text-zinc-600,
+        html.light .text-zinc-700,
+        html.light .text-zinc-800 {
+            color: var(--fg-subtle) !important;
+        }
+
+        html.light .placeholder\:text-zinc-600::placeholder,
+        html.light input::placeholder {
+            color: #9aa0a8 !important;
+        }
+
+        html.light input[type="date"] {
+            color-scheme: light;
+        }
+
+        html.light .nav-tab-inactive {
+            color: var(--nav-inactive) !important;
         }
 
         .safe-pb {
@@ -96,14 +315,13 @@
             scrollbar-width: none;
         }
 
-        /* Custom list animation */
         .list-item-enter {
             animation: fadeIn 0.4s ease-out backwards;
         }
     </style>
 </head>
 
-<body class="font-sans antialiased">
+<body class="font-sans antialiased theme-page">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>

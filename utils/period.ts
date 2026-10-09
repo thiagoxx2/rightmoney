@@ -41,6 +41,19 @@ export function getLocalBoundaryIsoStrings(period: SelectedPeriod): {
   };
 }
 
+/** Limites ISO locais para um DateRange arbitrário (ex.: ciclo de fatura). */
+export function getDateRangeBoundaryIsoStrings(range: DateRange): {
+  startIso: string;
+  endExclusiveIso: string;
+} {
+  const [sy, sm, sd] = range.start.split('-').map(Number);
+  const [ey, em, ed] = range.endExclusive.split('-').map(Number);
+  return {
+    startIso: new Date(sy, sm - 1, sd, 0, 0, 0, 0).toISOString(),
+    endExclusiveIso: new Date(ey, em - 1, ed, 0, 0, 0, 0).toISOString(),
+  };
+}
+
 export function getPreviousPeriod(period: SelectedPeriod): SelectedPeriod {
   if (period.month === 1) {
     return { year: period.year - 1, month: 12 };

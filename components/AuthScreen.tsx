@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff, Sparkles, Loader2 } from 'lucide-react';
+import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff, Sparkles, Loader2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 const AuthScreen: React.FC = () => {
   const { signIn, signUp } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,7 +53,20 @@ const AuthScreen: React.FC = () => {
   }, [email, password, name, isLogin]);
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-6 overflow-hidden">
+    <div className="min-h-screen theme-page flex items-center justify-center p-6 overflow-hidden relative">
+      <button
+        type="button"
+        onClick={toggleTheme}
+        className="absolute top-6 right-6 z-20 bg-white/10 p-3 rounded-full border border-white/10 hover:bg-white/20 transition-colors active:scale-95"
+        aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+      >
+        {theme === 'dark' ? (
+          <Sun size={20} className="text-amber-400" />
+        ) : (
+          <Moon size={20} className="text-blue-500" />
+        )}
+      </button>
+
       {/* Background Gradient Animation */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-[128px] animate-pulse" />
@@ -64,7 +79,7 @@ const AuthScreen: React.FC = () => {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-[2rem] glass border-white/10 mb-4">
             <Sparkles size={40} className="text-blue-500" />
           </div>
-          <h1 className="text-4xl font-black tracking-tighter mb-2">Finança</h1>
+          <h1 className="text-4xl font-black tracking-tighter mb-2 theme-fg">Finança</h1>
           <p className="text-sm text-zinc-500 font-bold uppercase tracking-widest">Controle Familiar</p>
         </div>
 
@@ -112,7 +127,7 @@ const AuthScreen: React.FC = () => {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Como devemos te chamar?"
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-5 py-4 text-white font-bold outline-none focus:border-blue-500 transition-colors"
+                    className="w-full theme-input border rounded-2xl pl-12 pr-5 py-4 font-bold outline-none focus:border-blue-500 transition-colors"
                     required={!isLogin}
                   />
                 </div>
@@ -129,7 +144,7 @@ const AuthScreen: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-5 py-4 text-white font-bold outline-none focus:border-blue-500 transition-colors"
+                  className="w-full theme-input border rounded-2xl pl-12 pr-5 py-4 font-bold outline-none focus:border-blue-500 transition-colors"
                   required
                 />
               </div>
@@ -145,7 +160,7 @@ const AuthScreen: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-12 py-4 text-white font-bold outline-none focus:border-blue-500 transition-colors"
+                  className="w-full theme-input border rounded-2xl pl-12 pr-12 py-4 font-bold outline-none focus:border-blue-500 transition-colors"
                   required
                   minLength={6}
                 />

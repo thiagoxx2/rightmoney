@@ -12,12 +12,12 @@ const MonthSelector: React.FC = () => {
   } = usePeriod();
 
   return (
-    <div className="glass rounded-[2rem] p-4 flex items-center justify-between border-white/10 bg-white/5">
+    <div className="glass rounded-[2rem] p-4 flex items-center justify-between border-white/10">
       <button
         type="button"
         onClick={goToPreviousMonth}
         aria-label="Mês anterior"
-        className="p-3 rounded-2xl bg-white/5 border border-white/10 text-white active:scale-95 transition-transform hover:bg-white/10"
+        className="p-3 rounded-2xl theme-chip border theme-fg active:scale-95 transition-transform"
       >
         <ChevronLeft size={20} strokeWidth={3} />
       </button>
@@ -29,7 +29,7 @@ const MonthSelector: React.FC = () => {
             {isCurrentMonth ? 'Mês Atual' : 'Período'}
           </span>
         </div>
-        <p className="text-sm font-black tracking-tight truncate">{periodLabel}</p>
+        <p className="text-sm font-black tracking-tight truncate theme-fg">{periodLabel}</p>
       </div>
 
       <button
@@ -37,10 +37,10 @@ const MonthSelector: React.FC = () => {
         onClick={goToNextMonth}
         disabled={!canGoNext}
         aria-label="Próximo mês"
-        className={`p-3 rounded-2xl border border-white/10 active:scale-95 transition-transform ${
+        className={`p-3 rounded-2xl border active:scale-95 transition-transform ${
           canGoNext
-            ? 'bg-white/5 text-white hover:bg-white/10'
-            : 'bg-white/[0.02] text-zinc-700 cursor-not-allowed'
+            ? 'theme-chip theme-fg'
+            : 'theme-chip text-zinc-700 nav-tab-inactive cursor-not-allowed opacity-50'
         }`}
       >
         <ChevronRight size={20} strokeWidth={3} />

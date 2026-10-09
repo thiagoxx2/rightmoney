@@ -1,7 +1,8 @@
 import { supabase } from './supabase';
 import type { DateRange, SelectedPeriod } from '../types/financial';
-import { getLocalBoundaryIsoStrings } from '../utils/period';
+import { getDateRangeBoundaryIsoStrings } from '../utils/period';
 import { filterTransactionsByRange } from '../utils/financial';
+import type { PaymentMethod } from '../constants/creditCard';
 
 // =====================================================
 // TIPOS
@@ -16,6 +17,8 @@ export interface Transaction {
   date: string;
   type: 'income' | 'expense';
   category: string;
+  /** null = não classificado; credit_card = entra na fatura do cartão */
+  payment_method?: PaymentMethod | null;
   created_at?: string;
 }
 
@@ -27,6 +30,7 @@ export interface CreateTransactionInput {
   type: 'income' | 'expense';
   category: string;
   family_id?: string | null;
+  payment_method?: PaymentMethod | null;
 }
 
 export interface TransactionPeriodQuery {
@@ -88,11 +92,7 @@ export const transactionsService = {
     try {
       if (userIds.length === 0) return [];
 
-      const [startYear, startMonth] = range.start.split('-').map(Number);
-      const boundaries = getLocalBoundaryIsoStrings({
-        year: startYear,
-        month: startMonth,
-      });
+      const boundaries = getDateRangeBoundaryIsoStrings(range);
 
       // familyId é contexto de escopo (RLS + membros); não filtramos por family_id
       // pois transações legadas podem ter family_id nulo.
@@ -138,6 +138,7 @@ export const transactionsService = {
           type: input.type,
           category: input.category,
           family_id: input.family_id ?? familyId ?? null,
+          payment_method: input.payment_method ?? null,
         })
         .select()
         .single();
